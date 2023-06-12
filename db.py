@@ -13,9 +13,12 @@ import os
 #6 aborted because time ran out
 
 class Database:
-    def __init__(self, name):
+    def __init__(self, name, MOCK):
         self.con = sqlite3.connect(name)
         self.con.execute("PRAGMA foreign_keys = 1")
+
+        self.MOCK = MOCK
+
         self.con.executescript("""
         BEGIN;
         CREATE TABLE IF NOT EXISTS "challenges"
@@ -259,6 +262,11 @@ class Database:
             return self.con.execute('SELECT * FROM players WHERE playerId = ?', (playerId,)).fetchone()
 
         except Exception as e:
+            if this.MOCK:
+                try:
+                    self.con.execute('UPDATE players SET currentChips = 10 WHERE playerId = ?;', (playerId,))
+                except Exception:
+                    pass
             print(e, file=sys.stderr, flush=True)
             self.con.rollback()
             if type(e) == ValueError:
@@ -269,7 +277,11 @@ class Database:
     def getPlayer(self, playerId):
         return self.con.execute('SELECT * FROM players WHERE playerId = ?', (playerId,)).fetchone()
 
+    def getTopPlayersThisEpoch(self, limit=10):
+        return self.con.execute('SELECT * FROM players WHERE playerId = ? ORDER BY currentChips LIMIT ?', (playerId, limit)).fetchall()
 
+    def getTopPlayersTotal(self, limit=10):
+        return self.con.execute('SELECT * FROM players WHERE playerId = ? ORDER BY totalChips LIMIT ?', (playerId, limit)).fetchall()
 
 if __name__ == "__main__":
     os.remove("test1.db") 

@@ -2,22 +2,45 @@ import os
 import json
 import discord
 from discord.commands import Option
+from discord.ext import tasks
 from dotenv import load_dotenv
 from db import Database
 import sys
+import time
+
+
+
+MOCK=True
+
 
 
 load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
 
-db = Database('db.db')
+db = Database('db.db', MOCK)
 
 CLIENT_ID = os.getenv('CLIENT_ID')
 TOKEN = os.getenv('TOKEN')
 GUILD = json.loads(os.getenv('GUILDS'))
 challengesChannelId = int(os.getenv('CHALLENGES'))
 spamChannelId = int(os.getenv('SPAM'))
+
+HELPMESSAGE = f"""
+    Commands:
+    /register - registeres you into the tournament
+    /create_challenge - creates a challenge in <#{challengesChannelId}> for other players to accept
+    /tokens - lists your current tokens
+
+    Associated channels:
+    <#{challengesChannelId}> - challenges are kept in this channel
+    <#{spamChannelId}> - please use your commands in this channel
+
+"""
+
+
+
+
 
 bot = discord.Bot(intents=discord.Intents.all())
 
@@ -43,44 +66,72 @@ async def createChallengeEntry(ctx, bet, lastsFor, notes):
 
     return entry, message
 
+async def abortChallenge(challenge, byPlayerId, timeout=False):
+    challengeMode = challenge[4]
+    try:
+        challenge = db.abortChallenge(challenge[0], byPlayerId)
+    except ValueError as e:
+        print(f"failed to abort challenge {challenge[0]} by {byPlayerId} because {e}", file=sys.stderr, flush=True)
+        return False
+
+    if challengeMode == 0:
+        channel = bot.get_channel(challengesChannelId)
+        message = await channel.fetch_message(challenge[0])
+        try:
+            await message.delete()
+        except discord.NotFound:
+            print("message not found", sys.stderr)
+        if timeout:
+            await DM(challenge[2], ["One of your challenges was aborted as noone responded to it in the given time frame."])
+        return True
+    
+    elif challengeMode == 1:
+        messageOne = f"The game {challenge[0]} was aborted." if not timeout else f"The game {challenge[0]} was aborted due to it not starting in the given time frame."
+        await DM(challenge[2], [messageOne, "If the game has already started or there is any other problem, please contact a game director."])
+        await DM(challenge[3], [messageOne, "If the game has already started or there is any other problem, please contact a game director."])
+        return True
+    
+    return False
+
+    
+
 async def setupReactions(ctx, challenge, message):
     await message.add_reaction("⚔️")
     await message.add_reaction("❌")
 
+    #TODO in case of performance difficulties, this can be boosted easily
     while True:
         reaction, user = await bot.wait_for("reaction_add", timeout=None)
-        
-        print(user)
-        print(reaction.emoji)
+
+        # reacted to a different message
+        if reaction.message.id != challenge[0]:
+            continue
+
         if challenge[4] == 0:
-            if user.id+1 != challenge[2] and str(reaction.emoji) == "⚔️":
+            if (MOCK or user.id != challenge[2]) and str(reaction.emoji) == "⚔️":
                 try:
                     challenge = db.acceptChallenge(challenge[0], user.id)
                     await message.delete()
                     await prepareGame(ctx, challenge)
+                    await message.delete()
                     break
                 except ValueError as e:
                     print(f"failed to accept challenge {challenge[0]} by {user.id} because {e}", file=sys.stderr, flush=True)
 
             if user.id == challenge[2] and str(reaction.emoji) == "❌":
-                try:
-                    challenge = db.abortChallenge(challenge[0], user.id)
-                    await message.delete()
-                    break
-                except ValueError as e:
-                    print(f"failed to abort challenge {challenge[0]} by {user.id} because {e}", file=sys.stderr, flush=True)
+                if await abortChallenge(challenge, user.id): break
 
         await reaction.clear()
 
-    print("accepted")
-    await message.delete()
+    print("accepted", file=sys.stderr)
 
 
 async def prepareGame(ctx, challenge):
     host = ctx.guild.get_member(challenge[2])
     away = ctx.guild.get_member(challenge[3])
-    print(host)
-    print(away)
+    print("preparing gane", file=sys.stderr)
+    print(host, file=sys.stderr)
+    print(away, file=sys.stderr)
 
     if (not await DM(challenge[2],
         [   
@@ -117,19 +168,18 @@ async def prepareGame(ctx, challenge):
 async def on_ready():
     print("ready")
     print(f"invite link: https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&permissions=268512336&scope=bot%20applications.commands")
+    timeoutOldChallenges.start()
 
 @bot.event
 async def on_message(message):
-    print(message.channel.id)
-    print(spamChannelId)
-    print(type(spamChannelId))
+    print("recieved message", file=sys.stderr)
     
     if message.author == bot.user:
         return
 
     if message.channel.id == spamChannelId:
         try:
-            print('deleting')
+            print('deleting', file=sys.stderr)
             await message.delete()
         except:
             pass
@@ -148,14 +198,9 @@ async def on_message(message):
                 raise ValueError("Not a member of the game")
             
             if parts[1] == "abort":
-                if challenge[4] != 1:
-                    await message.channel.send("You can't abort a game that has already started!")
-                    raise ValueError("can't abort started game")
-                try:
-                    db.abortChallenge(challenge[0], message.author.id)
-                except ValueError as e:
-                    await message.channel.send(e)
-                    raise e
+                if not await abortChallenge(challenge[0], message.author.id):
+                    await message.channel.send("You can't abort this game. Perhaps it has already started?")
+                    raise ValueError("can't abort the game")
 
                 await message.channel.send("Game aborted.")
                 
@@ -198,7 +243,7 @@ async def on_message(message):
                     await DM(challenge[2], [f"Game over!. You've {x}"])
                     x = "won" if message.author.id == challenge[3] else "lost"
                     await DM(challenge[3], [f"Game over!. You've {x}"])
-                    print(f"game {challenge[0]} reported as win for {message.author.id}")
+                    print(f"game {challenge[0]} reported as win for {message.author.id}", file=sys.stderr)
                 except ValueError as e:
                     await message.channel.send(e)
                     raise e
@@ -212,7 +257,14 @@ async def on_message(message):
 
 
 
-
+@tasks.loop(minutes=1.0)
+async def timeoutOldChallenges():
+    print("checking timeouts", file=sys.stderr)
+    currentTime = time.time()
+    for challenge in db.getChallenges(status=0):
+        if (challenge[5] <= currentTime):
+            print("timeout", file=sys.stderr)
+            await abortChallenge(challenge, challenge[2], True)
 
 
 # ****************
@@ -243,13 +295,19 @@ async def registerPlayer(ctx):
     await ctx.followup.send("done")
 
 @bot.slash_command(name="tokens", guild_ids=GUILD, description="Check the number of your tokens!")
-async def registerPlayer(ctx):
+async def tokens(ctx):
     await ctx.defer(ephemeral=True)
     player = db.getPlayer(ctx.author.id)
     if player == None:
         await ctx.followup.send("Player doesn't exist! Please register with /register command")
         return
     await ctx.followup.send(f"You have {player[1]} tokens this epoch. (Your total accross all epochs is {player[2]})")
+
+@bot.slash_command(name="help", guild_ids=GUILD, description="Help with commands for the Highroller.")
+async def help(ctx):
+    await ctx.defer(ephemeral=True)
+    await ctx.followup.send(HELPMESSAGE)
+
 
 
 bot.run(TOKEN)
