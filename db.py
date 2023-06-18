@@ -262,7 +262,7 @@ class Database:
             return self.con.execute('SELECT * FROM players WHERE playerId = ?', (playerId,)).fetchone()
 
         except Exception as e:
-            if this.MOCK:
+            if self.MOCK:
                 try:
                     self.con.execute('UPDATE players SET currentChips = 10 WHERE playerId = ?;', (playerId,))
                 except Exception:

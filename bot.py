@@ -110,6 +110,7 @@ async def setupReactions(ctx, challenge, message):
         if challenge[4] == 0:
             if (MOCK or user.id != challenge[2]) and str(reaction.emoji) == "⚔️":
                 try:
+                    print(f"accepting challenge by {user.id}", file=sys.stderr, flush=True)
                     challenge = db.acceptChallenge(challenge[0], user.id)
                     await message.delete()
                     await prepareGame(ctx, challenge)
@@ -172,14 +173,12 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    print("recieved message", file=sys.stderr)
     
     if message.author == bot.user:
         return
 
     if message.channel.id == spamChannelId:
         try:
-            print('deleting', file=sys.stderr)
             await message.delete()
         except:
             pass
