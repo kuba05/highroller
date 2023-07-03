@@ -5,6 +5,7 @@ from discord.commands import Option
 from dotenv import load_dotenv
 from db import Database
 import sys
+from discord.ext import tasks
 
 
 load_dotenv()
@@ -17,12 +18,42 @@ CLIENT_ID = os.getenv('CLIENT_ID')
 TOKEN = os.getenv('TOKEN')
 GUILD = json.loads(os.getenv('GUILDS'))
 challengesChannelId = int(os.getenv('CHALLENGES'))
+LeaderboardsChannelId = int(os.getenv('LEADERBOARDS'))
 spamChannelId = int(os.getenv('SPAM'))
+
+leaderboardsMessages = [None, None]
 
 bot = discord.Bot(intents=discord.Intents.all())
 
+
+# *********
+# *HELPERS*
+# *********
+
+async def redoLeaderBoards():
+    if not (leaderboardsMessages[0] and leaderboardsMessages[1]):
+        channel = await bot.fetch_channel(LeaderboardsChannelId)
+        async for message in channel.history(limit=200):
+            await message.delete()
+            
+        leaderboardsMessages[0] = await channel.send("a")
+        leaderboardsMessages[1] = await channel.send("a")
+        
+    message = "Top players in current epoch:"
+    for i, player in enumerate(db.getTopPlayersEpoch()):
+        name = (await bot.fetch_user(player[0])).display_name
+        message += f"\n{i+1}. {name} - {player[2]}"
+    
+    await leaderboardsMessages[0].edit(message)
+    
+    message = "Top players accross all epochs:"
+    for i, player in enumerate(db.getTopPlayersGlobal()):
+        name = (await bot.fetch_user(player[0])).display_name
+        message += f"\n{i+1}. {name} - {player[1]}"
+    await leaderboardsMessages[1].edit(message)
+    
 async def DM(memberId, messages):
-    member = bot.get_guild(int(GUILD[0])).get_member(memberId)
+    member = await bot.fetch_user(memberId)
     try:
         dmChannel = await member.create_dm()
         for message in messages:
@@ -71,6 +102,8 @@ async def setupReactions(ctx, challenge, message):
                     print(f"failed to abort challenge {challenge[0]} by {user.id} because {e}", file=sys.stderr, flush=True)
 
         await reaction.clear()
+        await message.add_reaction("⚔️")
+        await message.add_reaction("❌")
 
     print("accepted")
     await message.delete()
@@ -117,6 +150,7 @@ async def prepareGame(ctx, challenge):
 async def on_ready():
     print("ready")
     print(f"invite link: https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&permissions=268512336&scope=bot%20applications.commands")
+    await redoLeaderBoards()
 
 @bot.event
 async def on_message(message):
@@ -194,6 +228,7 @@ async def on_message(message):
                     raise ValueError("game not in progress")
                 try:
                     db.winChallenge(challenge[0], message.author.id == challenge[2])
+                    redoLeaderBoards()
                     x = "won" if message.author.id == challenge[2] else "lost"
                     await DM(challenge[2], [f"Game over!. You've {x}"])
                     x = "won" if message.author.id == challenge[3] else "lost"
@@ -211,8 +246,32 @@ async def on_message(message):
             print(e, file=sys.stderr, flush=True)
 
 
+@tasks.loop(minutes=1)
+async def updateLeaderBoards():
+    print("Updating boards", file=sys.stderr)
+    redoLeaderBoards()
 
-
+@tasks.loop(minutes=1)
+async def checkTimeoutedGames():
+    for challenge in db.getChallenges(0):
+        if challenge[5] <= time.time():
+            print(f"aborting {challenge[0]} because of timeout")
+            challenge = db.abortChallenge(challenge[0], challenge[2])
+            await DM(challenge[2], [f"One of you challenges was aborted due to timelimit running out."])
+            
+    for challenge in db.getChallenges(1):
+        if challenge[5] <= time.time():
+            print(f"aborting {challenge[0]} because of timeout")
+            challenge = db.abortChallenge(challenge[0], challenge[2])
+            await DM(challenge[2], [f"Challenge {challenge[0]} was aborted due to timelimit running out."])
+            await DM(challenge[3], [f"Challenge {challenge[0]} was aborted due to timelimit running out."])
+            
+    redoLeaderBoards()
+    
+    
+    
+    
+    
 
 
 # ****************

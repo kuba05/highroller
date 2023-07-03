@@ -266,6 +266,12 @@ class Database:
             else:
                 raise ValueError(errorMessage)
 
+    def getTopPlayersEpoch(self):
+        return self.con.execute('SELECT * FROM players ORDER BY currentChips DESC LIMIT 10').fetchall()
+        
+    def getTopPlayersGlobal(self):
+        return self.con.execute('SELECT * FROM players ORDER BY totalChips DESC LIMIT 10').fetchall()
+        
     def getPlayer(self, playerId):
         return self.con.execute('SELECT * FROM players WHERE playerId = ?', (playerId,)).fetchone()
 
