@@ -209,6 +209,7 @@ class Messenger:
         messenger = Messenger()
         messenger.messageChannel: discord.TextChannel = await bot.fetch_channel(messageChannelId)
         messenger.messages = []
+        print(f"message channel: {messenger.messageChannel} (server: {messenger.messageChannel.guild})")
         return messenger
 
     async def _sendAll(self, challenge: Challenge, messages: list[str]) -> None:
