@@ -1,30 +1,35 @@
+from __future__ import annotations
+
+from enum import Enum
 import os
 import json
 import discord
-from discord.commands import Option
-from discord.ext import tasks
 from dotenv import load_dotenv
 from db import Database
 import sys
 import time
 
+from typing import Optional
 
-
-MOCK=True
-
-
+STARTING_CHIPS=10
 
 load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
 
-db = Database('db.db', MOCK)
+db = Database('db.db')
 
 CLIENT_ID = os.getenv('CLIENT_ID')
 TOKEN = os.getenv('TOKEN')
-GUILD = json.loads(os.getenv('GUILDS'))
 challengesChannelId = int(os.getenv('CHALLENGES'))
 spamChannelId = int(os.getenv('SPAM'))
+
+
+
+ACCEPT_EMOJI = "⚔"
+ABORT_EMOJI = "❌"
+
+
 
 HELPMESSAGE = f"""
     Commands:
@@ -38,139 +43,363 @@ HELPMESSAGE = f"""
 
 """
 
+class ChallengeState(Enum):
+    PRECREATED = 0
+    CREATED = 1
+    ACCEPTED = 2
+    CONFIRMED = 3
+    STARTED = 4
+    FINISHED = 5
+    ABORTED = 7
 
 
+class Player:
+    def __init__(self, playerId: int, currentChips: int, totalChips: int, abortedGames: int):
+        self.id = playerId
+        self.currentChips = currentChips
+        self.totalChips = totalChips
+        self.abortedGames = abortedGames
+        self.dmChannel = None
 
+    @staticmethod
+    def create(playerId: int) -> Player:
+        if Player.getById(playerId) != None:
+            raise ValueError("You are already registered!")
 
-bot = discord.Bot(intents=discord.Intents.all())
+        player = Player(playerId, STARTING_CHIPS, STARTING_CHIPS, 0)
+        db.createPlayer(player.id, player.currentChips, player.totalChips, player.abortedGames)
+        return player
 
-async def DM(memberId, messages):
-    member = bot.get_guild(int(GUILD[0])).get_member(memberId)
-    try:
-        dmChannel = await member.create_dm()
-        for message in messages:
-            await dmChannel.send(message)
-    except discord.errors.Forbidden:
-        return False
-    return True
-
-async def createChallengeEntry(ctx, bet, lastsFor, notes):
-    channel = await bot.fetch_channel(challengesChannelId)
-    message = await channel.send(f"New challenge for {bet} chips")
+    @staticmethod
+    def getById(id: int) -> Optional[Player]:
+        playerData = db.getPlayer(id)
+        if playerData == None:
+            return None
+        else:
+            return Player(*playerData)
     
-    try:
-        entry = db.createChallenge(messageId=message.id, bet=bet, authorId = ctx.author.id, lastForMinutes=lastsFor, notes=notes)
-    except ValueError as e:
-        await message.delete()
-        raise e
-
-    return entry, message
-
-async def abortChallenge(challenge, byPlayerId, timeout=False):
-    challengeMode = challenge[4]
-    try:
-        challenge = db.abortChallenge(challenge[0], byPlayerId)
-    except ValueError as e:
-        print(f"failed to abort challenge {challenge[0]} by {byPlayerId} because {e}", file=sys.stderr, flush=True)
-        return False
-
-    if challengeMode == 0:
-        channel = bot.get_channel(challengesChannelId)
-        message = await channel.fetch_message(challenge[0])
+    async def DM(self, message: str) -> bool:
+        member = await bot.fetch_user(self.id)
         try:
-            await message.delete()
-        except discord.NotFound:
-            print("message not found", sys.stderr)
-        if timeout:
-            await DM(challenge[2], ["One of your challenges was aborted as noone responded to it in the given time frame."])
+            if not self.dmChannel:
+                self.dmChannel = await member.create_dm()
+
+            await self.dmChannel.send(message)
+        except discord.errors.Forbidden:
+            return False
         return True
+        
+    def giveChips(self, number: int) -> None:
+        if self.currentChips + number < 0:
+            raise ValueError("You can't have negative chips!")
+        db.adjustPlayerChips(self.id, number)
+        self.currentChips += number
+        self.totalChips += number
+         
+class Challenge:
+    def __init__(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: ChallengeState | int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
+        self.id: int = messageId
+        self.bet: int = bet
+        self.authorId: int = authorId
+        self.acceptedBy: Optional[int] = acceptedBy
+        if type(state) == type(1):
+            state = ChallengeState(state)
+        self.state: ChallengeState = state
+        self.timeout: Optional[int] = timeout
+        self.notes: str = notes
+        self.gameName: Optional[str] = gameName
+        self.winner: Optional[int] = winner
+        
+    @staticmethod
+    def precreate(bet: int, authorId: int, lastsForMinutes = 60*24*355, notes = "") -> Challenge:
+        author = Player.getById(authorId)
+        if author == None:
+            raise ValueError("You are not registered!")
+        if author.currentChips < bet:
+            raise ValueError("You don't have enough chips")
+
+        challenge = Challenge(None, bet, authorId, None, ChallengeState.PRECREATED, int(time.time() + lastsForMinutes*60), notes, None, None)
+        return challenge
+
+    @staticmethod
+    def getById(id: int) -> Optional[Challenge]:
+        challengeData = db.getChallenge(id)
+        if challengeData == None:
+            return None
+        else:
+            return Challenge(*challengeData)
+
+    def finishCreating(self, messageId: int) -> None:
+        if self.state != ChallengeState.PRECREATED:
+            raise ValueError("can't create a challange that's already created!")
+        self.id = messageId
+        self.state = ChallengeState.CREATED
+        db.adjustPlayerChips(self.authorId, -self.bet)
+        db.createChallenge(self.id, self.bet, self.authorId, self.acceptedBy, self.state.value, self.timeout, self.notes, self.gameName, self.winner)
+        
+    def accept(self, playerId: int) -> None:
+        if self.state != ChallengeState.CREATED:
+            raise ValueError("Challenge has already been accepted!")
+        
+        # TODO: disabled for testing
+        #if self.authorId == playerId:
+        #    raise ValueError("You can't accept your own challenge!")
+        
+        player = Player.getById(playerId)
+        if player == None:
+            raise ValueError("You are not registered!")
+        if player.currentChips < self.bet:
+            raise ValueError("You don't have enough chips")
+        
+        db.setChallengeState(self.id, ChallengeState.ACCEPTED)
+        db.setChallengeAcceptedBy(self.id, playerId)
+        db.adjustPlayerChips(playerId, - self.bet)
+
+    def confirm(self, playerId: int) -> None:
+        if playerId != self.authorId:
+            raise ValueError("You can't confirm a game you're not hosting!")
+        
+        if self.state != ChallengeState.ACCEPTED:
+            raise ValueError("The game is not waiting for confirmation!")
+        
+        db.setChallengeState(self.id, ChallengeState.CONFIRMED)
     
-    elif challengeMode == 1:
-        messageOne = f"The game {challenge[0]} was aborted." if not timeout else f"The game {challenge[0]} was aborted due to it not starting in the given time frame."
-        await DM(challenge[2], [messageOne, "If the game has already started or there is any other problem, please contact a game director."])
-        await DM(challenge[3], [messageOne, "If the game has already started or there is any other problem, please contact a game director."])
-        return True
-    
-    return False
+    def start(self, playerId: int, gameName: str) -> None:
+        if playerId != self.authorId:
+            raise ValueError("You can't start a game you're not hosting!")
+        
+        if self.state != ChallengeState.CONFIRMED:
+            raise ValueError("The game can't be started!")
+        
+        db.setChallengeName(self.id, gameName)
+        db.setChallengeState(self.id, ChallengeState.STARTED)
 
-    
+    def claimVictory(self, playerId: int) -> None:
+        if playerId not in [self.authorId, self.acceptedBy]:
+            raise ValueError("You can't finish a game you're not part of!")
+        
+        if self.state != ChallengeState.STARTED:
+            raise ValueError("The game can't be finished!")
+        
+        db.setChallengeState(self.id, ChallengeState.FINISHED)
+        db.setChallengeWinner(self.id, playerId)
+        db.adjustPlayerChips(playerId, self.bet*2)
 
-async def setupReactions(ctx, challenge, message):
-    await message.add_reaction("⚔️")
-    await message.add_reaction("❌")
+    def abort(self, byPlayer: int) -> None:
+        if byPlayer not in [self.authorId, self.acceptedBy]:
+            raise ValueError("You can't abort a game you're not part of!")
+        
+        if self.state not in [ChallengeState.CREATED, ChallengeState.ACCEPTED]:
+            raise ValueError("Can't abort game that has already been started!")
+        
+        db.setChallengeState(self.id, ChallengeState.ABORTED)
+        db.adjustPlayerChips(self.authorId, self.bet)
 
-    #TODO in case of performance difficulties, this can be boosted easily
-    while True:
-        reaction, user = await bot.wait_for("reaction_add", timeout=None)
-
-        # reacted to a different message
-        if reaction.message.id != challenge[0]:
-            continue
-
-        if challenge[4] == 0:
-            if (MOCK or user.id != challenge[2]) and str(reaction.emoji) == "⚔️":
-                try:
-                    challenge = db.acceptChallenge(challenge[0], user.id)
-                    await message.delete()
-                    await prepareGame(ctx, challenge)
-                    await message.delete()
-                    break
-                except ValueError as e:
-                    print(f"failed to accept challenge {challenge[0]} by {user.id} because {e}", file=sys.stderr, flush=True)
-
-            if user.id == challenge[2] and str(reaction.emoji) == "❌":
-                if await abortChallenge(challenge, user.id): break
-
-        await reaction.clear()
-
-    print("accepted", file=sys.stderr)
+        if self.state == ChallengeState.ACCEPTED:
+            db.adjustPlayerChips(self.acceptedBy, self.bet)
+            db.increasePlayerAbortedCounter(byPlayer)
 
 
-async def prepareGame(ctx, challenge):
-    host = ctx.guild.get_member(challenge[2])
-    away = ctx.guild.get_member(challenge[3])
-    print("preparing gane", file=sys.stderr)
-    print(host, file=sys.stderr)
-    print(away, file=sys.stderr)
+class Messenger:
+    messageChannel: discord.TextChannel
+    messages: list[discord.Message]
 
-    if (not await DM(challenge[2],
-        [   
-            f"Hi, your challenge has been accepted by {away.nick}/{away.name}. Please exchange friend requests and start the game by sending me:",
-            f"{challenge[0]} start GameName",
-            f"You can also abort it by sending me:",
-            f"{challenge[0]} abort",
-            f"Please don't abort unless neccecary tho :)"
-        ])
-    ):
-        channel = await bot.fetch_channel(challengesChannelId)
-        channel.send(f"Please enable your DMs! @[{challenge[2]}]")
-        challenge = db.abortChallenge(challenge[0], challenge[2])
-        if not await DM(challenge[3], [f"Your opponent doesn't have DMs enabled, so this game will be aborted :("]):
-            channel.send(f"Please enable your DMs! @[{challenge[3]}]")
-        return
+    @staticmethod
+    async def create(messageChannelId: int) -> Messenger:
+        messenger = Messenger()
+        messenger.messageChannel: discord.TextChannel = await bot.fetch_channel(messageChannelId)
+        messenger.messages = []
+        return messenger
 
-    if (not await DM(challenge[3],
-        [
-            f" Hi, you have accepted {host.nick}/{host.name}'s challenge. He will send you friend request and the game shortly :)",
-            "You can also abort this game by sending me:",
-            f"{challenge[0]} abort",
-            f"Please don't abort unless neccecary tho :)"
-        ])
-    ):
-        channel = await bot.fetch_channel(challengesChannelId)
-        channel.send(f"Please enable your DMs! @[{challenge[3]}]")
-        challenge = db.abortChallenge(challenge[0], challenge[3])
-        await DM(challenge[2], [f"Your opponent doesn't have DMs enabled, so this game will be aborted :("])
+    async def _sendAll(self, challenge: Challenge, messages: list[str]) -> None:
+        recipients = [i for i in (Player.getById(challenge.authorId), Player.getById(challenge.acceptedBy)) if i != None]
+        for recipient in recipients:
+            for message in messages:
+                await recipient.DM(message)
+
+    async def createChallengeEntry(self, challenge: Challenge) -> None:
+        print(f"sending to {self.messageChannel}")
+        message = await self.messageChannel.send(f"Challenge by {challenge.authorId}")
+        challenge.finishCreating(message.id)
+        self.messages.append(challenge.id)
+        await message.add_reaction(ABORT_EMOJI)
+        await message.add_reaction(ACCEPT_EMOJI)
+
+    async def _deleteChallengeMessage(self, challenge) -> None:
+        message = await self.messageChannel.fetch_message(challenge.id)
+        await message.delete()
+
+    async def abortChallenge(self, challenge: Challenge) -> None:
+        messages = [f"Challenge with ID {challenge.id} has been aborted."]
+        await self._sendAll(challenge, messages)
+
+        await self._deleteChallengeMessage(challenge)
+
+        print("challenge aborted")
+
+    async def acceptChallenge(self, challenge: Challenge) -> None:
+        messages = [f"Challenge with ID {challenge.id} has been accepted."]
+        await self._sendAll(challenge, messages)
+
+        await self._deleteChallengeMessage(challenge)
+
+        print("challenge accepted")
+
+    async def confirmChallenge(self, challenge: Challenge) -> None:
+        messages = [f"Challenge with ID {challenge.id} has been accepted."]
+        await self._sendAll(challenge, messages)
+        print("challenge confirmed")
+
+    async def startChallenge(self, challenge: Challenge) -> None:
+        messages = [f"Challenge with ID {challenge.id} has been accepted."]
+        await self._sendAll(challenge, messages)
+        print("started confirmed")
+
+    async def claimChallenge(self, challenge: Challenge) -> None:
+        messages = [f"Challenge with ID {challenge.id} has been accepted."]
+        await self._sendAll(challenge, messages)
+        print("claimed confirmed")
 
 
+class MyBot(discord.Bot):
+    async def on_ready(self):
+        print(f'Logged on as {self.user}!')
+        print(f'guilds: {self.guilds}')
+        self.messenger: Messenger = await Messenger.create(challengesChannelId)
+
+    async def on_message(self, message: discord.Message):
+        if not isinstance(message.channel, discord.DMChannel):
+            return
+        
+        if message.author.id == bot.user.id:
+            print("it's me!")
+            return
+        
+        print("recieved a DM!")
+        user = Player.getById(message.author.id)
+        if user == None:
+            await message.reply("I don't recognize you! Please register!")
+            return
+        
+        contents = message.content.split(" ")
+        if len(contents) < 2 or not contents[0].isdigit():
+            await message.reply("Invalid format! Your message should start with a game id followed by a command!")
+            return
+        
+        challenge = Challenge.getById(int(contents[0]))
+        if challenge == None:
+            await message.reply("I don't recognize this game!")
+            return 
+
+        try:
+            match contents[1]:
+                case "abort":
+                    challenge.abort(user.id)
+                    await bot.messenger.abortChallenge(challenge)
+                case "accept":
+                    challenge.accept(user.id)
+                    await bot.messenger.acceptChallenge(challenge)
+                case "confirm":
+                    challenge.confirm(user.id)
+                    await bot.messenger.confirmChallenge(challenge)
+                case "start":
+                    if len(contents) < 3:
+                        raise ValueError("start command requires one argument: game_name")
+                    challenge.start(user.id, contents[2])
+                    await bot.messenger.startChallenge(challenge)
+                case "claim":
+                    challenge.claimVictory(user.id)
+                    await bot.messenger.claimChallenge(challenge)
+
+        except ValueError as e:
+            await message.reply(str(e))
+
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        print("reaction!")
+        if payload.channel_id != challengesChannelId:
+            print("wrong channel!")
+            return
+        
+        challenge = Challenge.getById(payload.message_id)
+        if challenge == None:
+            print("not a real challange")
+            return
+        
+        if payload.user_id == bot.user.id:
+            print("my emoji!")
+            return
+        
+        print(payload.emoji)
+        print(challenge.state)
+        try:
+            if str(payload.emoji) == ACCEPT_EMOJI:
+                print("accepted")
+                challenge.accept(payload.user_id)
+                await bot.messenger.acceptChallenge(challenge)
+            elif str(payload.emoji) == ABORT_EMOJI:
+                print("aborted")
+                challenge.abort(payload.user_id)
+                await bot.messenger.abortChallenge(challenge)
+            else:
+                print('out')
+        except ValueError as e:
+            print(str(e))
+
+
+bot = MyBot()
+
+@bot.command(description="Create a new challenge for the Highroller tournament!")
+@discord.option("bet", int, min_value = 1)
+async def create_challenge(ctx: discord.ApplicationContext, bet):
+    # you can use them as they were actual integers
+    try:
+        challenge = Challenge.precreate(int(bet), ctx.author.id)
+        await bot.messenger.createChallengeEntry(challenge)
+        await ctx.respond("Success!")
+    except ValueError as e:
+        await ctx.respond(str(e))
+
+@bot.command(description="Register yourself into our super cool tournament!")
+async def register(ctx: discord.ApplicationContext):
+    try:
+        Player.create(ctx.author.id)
+        await ctx.respond("Success!")
+    except ValueError as e:
+        await ctx.respond(str(e))
+
+@bot.command(description="Check your current number of chips!")
+async def chips(ctx: discord.ApplicationContext):
+    try:
+        player = Player.getById(ctx.author.id)
+        if player != None:
+            await ctx.respond(f"You have {player.currentChips} chips! ({player.totalChips} across all periods)")
+        else:
+            await ctx.respond(f"Please register!")
+    except ValueError as e:
+        await ctx.respond(str(e))
+
+@bot.command(description="Give yourself 10 chips so you can keep messing around!")
+async def add_chips(ctx: discord.ApplicationContext):
+    try:
+        player = Player.getById(ctx.author.id)
+        if player != None:
+            player.giveChips(10)
+            await ctx.respond(f"Success!")
+        else:
+            await ctx.respond(f"Please register!")
+    except ValueError as e:
+        await ctx.respond(str(e))
+
+
+bot.run(TOKEN)
+sys.exit()
 
 @bot.event
 async def on_ready():
     print("ready")
     print(f"invite link: https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&permissions=268512336&scope=bot%20applications.commands")
-    timeoutOldChallenges.start()
 
-@bot.event
+#@bot.event
 async def on_message(message):
     print("recieved message", file=sys.stderr)
     
@@ -257,7 +486,7 @@ async def on_message(message):
 
 
 
-@tasks.loop(minutes=1.0)
+#@tasks.loop(minutes=1.0)
 async def timeoutOldChallenges():
     print("checking timeouts", file=sys.stderr)
     currentTime = time.time()
@@ -267,47 +496,17 @@ async def timeoutOldChallenges():
             await abortChallenge(challenge, challenge[2], True)
 
 
-# ****************
-# *SLASH COMMANDS*
-# ****************
-
-@bot.slash_command(name="create_challenge", guild_ids=GUILD, description="Create a new challenge for the Highroller tournament!")
-async def createChallenge(ctx, bet: Option(int, "number of chips you want to bet"), time: Option(int, "How many minutes do you want this challenge to last? You can always manually cancel the challenge."), notes: Option(str, "Any notes to be displayed with the challenge?")):
+@bot.command(description="Create a new challenge for the Highroller tournament!")
+async def create_challenge(ctx: discord.ApplicationContext, bet: int):
+    """bet: discord.Option(int, description="number of chips you want to bet"),
+    time: discord.Option(int, description="How many minutes do you want this challenge to last? You can always manually cancel the challenge."),
+    notes: discord.Option(str, description="Any notes to be displayed with the challenge?")):"""
     await ctx.defer(ephemeral=True)
     try:
-        challenge, message = await createChallengeEntry(ctx, bet, time, notes)
+        challenge, message = await Challenge.precreate(bet, ctx.author.id, )
     except ValueError as e:
         await ctx.followup.send(str(e))
         return
 
     await ctx.followup.send("done")
     await setupReactions(ctx, challenge, message)
-
-@bot.slash_command(name="register", guild_ids=GUILD, description="Register yourself into our super cool tournament!")
-async def registerPlayer(ctx):
-    await ctx.defer(ephemeral=True)
-    try:
-        player = db.createPlayer(ctx.author.id)
-    except ValueError as e:
-        await ctx.followup.send(str(e))
-        return
-
-    await ctx.followup.send("done")
-
-@bot.slash_command(name="tokens", guild_ids=GUILD, description="Check the number of your tokens!")
-async def tokens(ctx):
-    await ctx.defer(ephemeral=True)
-    player = db.getPlayer(ctx.author.id)
-    if player == None:
-        await ctx.followup.send("Player doesn't exist! Please register with /register command")
-        return
-    await ctx.followup.send(f"You have {player[1]} tokens this epoch. (Your total accross all epochs is {player[2]})")
-
-@bot.slash_command(name="help", guild_ids=GUILD, description="Help with commands for the Highroller.")
-async def help(ctx):
-    await ctx.defer(ephemeral=True)
-    await ctx.followup.send(HELPMESSAGE)
-
-
-
-bot.run(TOKEN)

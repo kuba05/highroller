@@ -1,7 +1,10 @@
+from enum import Enum
 import sqlite3
 import sys
 import time
 import os
+
+from typing import Optional
 
 #status:
 #0 not accepted
@@ -11,13 +14,10 @@ import os
 #4 won by away
 #5 aborted manually
 #6 aborted because time ran out
-
 class Database:
-    def __init__(self, name, MOCK):
+    def __init__(self, name):
         self.con = sqlite3.connect(name)
         self.con.execute("PRAGMA foreign_keys = 1")
-
-        self.MOCK = MOCK
 
         self.con.executescript("""
         BEGIN;
@@ -25,211 +25,101 @@ class Database:
         (
             [messageId] INTEGER PRIMARY KEY NOT NULL,
             [bet] INTEGER CHECK (bet > 0),
-            [authorId] INTEGER  NOT NULL,
+            [authorId] INTEGER NOT NULL,
             [acceptedBy] INTEGER,
-            [status] INTEGER default 0,
+            [status] INTEGER,
             [timeout] INTEGER,
             [notes] TEXT,
-            [gameName] TEXT default NULL,
+            [gameName] TEXT,
+            [winner] INTEGER,
             FOREIGN KEY(authorId) REFERENCES players(playerId),
-            FOREIGN KEY(acceptedBy) REFERENCES players(playerId)
+            FOREIGN KEY(acceptedBy) REFERENCES players(playerId),
+            FOREIGN KEY(winner) REFERENCES players(playerId)
         );
         CREATE INDEX IF NOT EXISTS [challengesByAuthorsIndex] ON "challenges" ([authorId]);
 
         CREATE TABLE IF NOT EXISTS "players"
         (
             [playerId] INTEGER PRIMARY KEY NOT NULL,
-            [currentChips] INTEGER default 0 check (currentChips >= 0),
-            [totalChips] INTEGER default 0 check (totalChips >= 0),
-            [abortedGamesTotal] INTEGER default 0
+            [currentChips] INTEGER check (currentChips >= 0),
+            [totalChips] INTEGER check (totalChips >= 0),
+            [abortedGamesTotal] INTEGER
         );
         COMMIT;
         """)
 
-    def createChallenge(self, messageId, bet, authorId, lastForMinutes, notes):
-
-        print(f"creating challenge with params: {messageId}, {bet}, {authorId}, {lastForMinutes}, {notes}", file=sys.stderr, flush=True)
-
-        timeout = int(time.time() + lastForMinutes*60)
-
-        errorMessage = "Something went wrong!"
-
+    def createChallenge(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], status: int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]):
+        print(f"creating challenge with params: {messageId}, {bet}, {authorId}, {acceptedBy}, {status}, {timeout}, {notes}, {gameName}, {winner}", file=sys.stderr, flush=True)
         try:
-            errorMessage = "Player doesn't exist! Please register with /register command"
-            self.con.execute('INSERT INTO challenges VALUES (?, ?, ?, NULL, 0, ?, ?, NULL);', (messageId, bet, authorId, timeout, notes))
-
-            errorMessage = "Not enough chips!"
-            self.con.execute("""
-                UPDATE players SET currentChips = (
-                    (
-                        SELECT currentChips FROM players WHERE playerId = :playerId
-                    ) - :bet
-                ),
-                totalChips = (
-                    (
-                        SELECT totalChips FROM players WHERE playerId = :playerId
-                    ) - :bet
-                )
-                WHERE playerId = :playerId
-            """, {"playerId": authorId, "bet": bet})
-
+            self.con.execute('INSERT INTO challenges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);', (messageId, bet, authorId, acceptedBy, status, timeout, notes, gameName, winner))
             self.con.commit()
-            return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (messageId,)).fetchone()
 
         except Exception as e:
             print(e, file=sys.stderr)
-            print(f"errorMessage: {errorMessage}", file=sys.stderr, flush=True)
             self.con.rollback()
-            if type(e) == ValueError:
-                raise e
-            else:
-                raise ValueError(errorMessage)
 
-
-    def abortChallenge(self, challengeId, abortedBy):
-        
-        print(f"aborting challenge with id {challengeId}, by player {abortedBy}", file=sys.stderr, flush=True)
-
+    def getChallenge(self, challengeId):
+        return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
+    
+    def setChallengeState(self, challengeId: int, challengeState: Enum):
         try:
-            challenge = self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
-
-            #check status
-            if challenge[4] not in [0, 1]:
-                print(f"Can't abort game in progress! {challengeId}", file=sys.stderr, flush=True)
-                raise ValueError("Can't abort game in progress!")
-
-            if challenge[4] == 1:
-                self.con.execute("UPDATE players SET abortedGamesTotal = (SELECT abortedGamesTotal FROM players WHERE playerId = :playerId) + 1 WHERE playerId = :playerId", {"playerId": abortedBy})
-            self.con.execute('UPDATE challenges SET status = 4 WHERE messageId = ?', (challengeId,))
-            
-            # the challenge has been accepted
-            if challenge[3] != None:
-                data = [challenge[2], challenge[3]]
-            else:
-                data = [challenge[2]]
-
-            data = [{"playerId": i, "bet": challenge[1]} for i in data]
-
-            self.con.executemany(
-                """
-                UPDATE players SET currentChips = (
-                    (
-                        SELECT currentChips FROM players WHERE playerId = :playerId
-                    ) + :bet
-                ),
-                totalChips = (
-                    (
-                        SELECT totalChips FROM players WHERE playerId = :playerId
-                    ) + :bet
-                )
-                WHERE playerId = :playerId
-                """, data
-            )
-
+            self.con.execute('UPDATE challenges SET status = ? WHERE messageId = ?', (challengeState.value, challengeId,))
             self.con.commit()
 
-            return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
-
         except Exception as e:
-            print(e, file=sys.stderr, flush=True)
+            print(e, file=sys.stderr)
             self.con.rollback()
-            if type(e) == ValueError:
-                raise e
-            else:
-                raise ValueError("Something went wrong!")
 
-    def acceptChallenge(self, challengeId, playerId):
+    def setChallengeAcceptedBy(self, challengeId: int, acceptedBy: int):
         try:
-            challenge = self.con.execute("SELECT * from challenges WHERE messageId = ?", (challengeId,)).fetchone()
+            self.con.execute('UPDATE challenges SET acceptedBy = ? WHERE messageId = ?', (acceptedBy, challengeId,))
+            self.con.commit()
+        except Exception as e:
+            print(e, file=sys.stderr)
+            self.con.rollback()
 
-            if challenge[4] != 0:
-                raise ValueError("The challenge is not acceptable!")
-            self.con.execute("""
-                UPDATE players SET currentChips = (
-                    (
-                        SELECT currentChips FROM players WHERE playerId = :playerId
-                    ) - :bet
-                ),
-                totalChips = (
-                    (
-                        SELECT totalChips FROM players WHERE playerId = :playerId
-                    ) - :bet
-                )
-                WHERE playerId = :playerId
-            """, {"playerId": playerId, "bet": challenge[1]})
+    def setChallengeName(self, challengeId: int, name: str):
+        pass
+    
+    def setChallengeWinner(self, challengeId: int, playerId: int):
+        pass
 
-            self.con.execute("UPDATE challenges SET status = 1, acceptedBy = ? WHERE messageId = ?", (playerId, challengeId))
+
+    def createPlayer(self, playerId, currentChips, totalChips, abortedGames):
+        try:
+            self.con.execute('INSERT INTO players VALUES (?, ?, ?, ?);', (playerId, currentChips, totalChips, abortedGames))
             self.con.commit()
 
-            return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
-
         except Exception as e:
-            print(e, file=sys.stderr, flush=True)
+            print(e, file=sys.stderr)
             self.con.rollback()
-            if type(e) == ValueError:
-                raise e
-            else:
-                raise ValueError("Something went wrong!")
 
-    def startChallenge(self, challengeId, gameName):
+    def getPlayer(self, playerId):
+        return self.con.execute('SELECT * FROM players WHERE playerId = ?', (playerId,)).fetchone()
+    
+    def increasePlayerAbortedCounter(self, playerId: int):
         try:
-            challenge = self.con.execute("SELECT * from challenges WHERE messageId = ?", (challengeId,)).fetchone()
-
-            if challenge[4] != 1:
-                raise ValueError("The challenge can't be started!")
-            
-            self.con.execute("UPDATE challenges SET status = 2, gameName = ? WHERE messageId = ?", (gameName, challengeId))
+            self.con.execute('UPDATE players SET abortedGamesTotal = abortedGamesTotal + 1 WHERE playerId = ?', (playerId,))
             self.con.commit()
-
-            return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
-
         except Exception as e:
-            print(e, file=sys.stderr, flush=True)
+            print(e, file=sys.stderr)
             self.con.rollback()
-            if type(e) == ValueError:
-                raise e
-            else:
-                raise ValueError("Something went wrong!")
 
-    def winChallenge(self, challengeId, wonByHost):
+    def adjustPlayerChips(self, playerId: int, changeOfChips: int):
         try:
-            challenge = self.con.execute("SELECT * from challenges WHERE messageId = ?", (challengeId,)).fetchone()
-
-            if challenge[4] != 2:
-                raise ValueError("The challenge can't be ended!")
-            
-            if wonByHost:
-                status = 3
-                won = challenge[2]
-            else:
-                status = 4
-                won = challenge[3]
-
-            self.con.execute("UPDATE challenges SET status = ? WHERE messageId = ?", (status, challengeId))
-            self.con.execute("""
-                UPDATE players SET currentChips = (
-                    (
-                        SELECT currentChips FROM players WHERE playerId = :playerId
-                    ) + :bet
-                ),
-                totalChips = (
-                    (
-                        SELECT totalChips FROM players WHERE playerId = :playerId
-                    ) + :bet
-                )
-                WHERE playerId = :playerId
-            """, {"playerId": won, "bet": 2*challenge[1]})
+            self.con.execute('UPDATE players SET currentChips = currentChips + ?, totalChips = totalChips + ? WHERE playerId = ?', (changeOfChips, changeOfChips, playerId,))
             self.con.commit()
-
-            return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
-
         except Exception as e:
-            print(e, file=sys.stderr, flush=True)
+            print(e, file=sys.stderr)
             self.con.rollback()
-            if type(e) == ValueError:
-                raise e
-            else:
-                raise ValueError("Something went wrong!")
+
+
+
+
+
+
+
+
 
     def getChallenges(self, status=None):
         try:
@@ -244,39 +134,7 @@ class Database:
                 raise e
             else:
                 raise ValueError("Something went wrong!")
-
-    def getChallenge(self, challengeId):
-        return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
-
-
-
-
-
-
-    def createPlayer(self, playerId):
-        errorMessage = "Something went wrong!"
-        try:
-            errorMessage = "Player is already registered!"
-            self.con.execute('INSERT INTO players VALUES (?, 10, 10, 0);', (playerId,))
-            self.con.commit()
-            return self.con.execute('SELECT * FROM players WHERE playerId = ?', (playerId,)).fetchone()
-
-        except Exception as e:
-            if this.MOCK:
-                try:
-                    self.con.execute('UPDATE players SET currentChips = 10 WHERE playerId = ?;', (playerId,))
-                except Exception:
-                    pass
-            print(e, file=sys.stderr, flush=True)
-            self.con.rollback()
-            if type(e) == ValueError:
-                raise e
-            else:
-                raise ValueError(errorMessage)
-
-    def getPlayer(self, playerId):
-        return self.con.execute('SELECT * FROM players WHERE playerId = ?', (playerId,)).fetchone()
-
+            
     def getTopPlayersThisEpoch(self, limit=10):
         return self.con.execute('SELECT * FROM players WHERE playerId = ? ORDER BY currentChips LIMIT ?', (playerId, limit)).fetchall()
 
