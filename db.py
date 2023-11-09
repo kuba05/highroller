@@ -48,7 +48,7 @@ class Database:
         COMMIT;
         """)
 
-    def createChallenge(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], status: int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]):
+    def createChallenge(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], status: int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
         print(f"creating challenge with params: {messageId}, {bet}, {authorId}, {acceptedBy}, {status}, {timeout}, {notes}, {gameName}, {winner}", file=sys.stderr, flush=True)
         try:
             self.con.execute('INSERT INTO challenges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);', (messageId, bet, authorId, acceptedBy, status, timeout, notes, gameName, winner))
@@ -61,7 +61,7 @@ class Database:
     def getChallenge(self, challengeId):
         return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
     
-    def setChallengeState(self, challengeId: int, challengeState: Enum):
+    def setChallengeState(self, challengeId: int, challengeState: Enum) -> None:
         try:
             self.con.execute('UPDATE challenges SET status = ? WHERE messageId = ?', (challengeState.value, challengeId,))
             self.con.commit()
@@ -70,7 +70,7 @@ class Database:
             print(e, file=sys.stderr)
             self.con.rollback()
 
-    def setChallengeAcceptedBy(self, challengeId: int, acceptedBy: int):
+    def setChallengeAcceptedBy(self, challengeId: int, acceptedBy: int) -> None:
         try:
             self.con.execute('UPDATE challenges SET acceptedBy = ? WHERE messageId = ?', (acceptedBy, challengeId,))
             self.con.commit()
@@ -78,14 +78,14 @@ class Database:
             print(e, file=sys.stderr)
             self.con.rollback()
 
-    def setChallengeName(self, challengeId: int, name: str):
+    def setChallengeName(self, challengeId: int, name: str) -> None:
         pass
     
-    def setChallengeWinner(self, challengeId: int, playerId: int):
+    def setChallengeWinner(self, challengeId: int, playerId: int) -> None:
         pass
 
 
-    def createPlayer(self, playerId, currentChips, totalChips, abortedGames):
+    def createPlayer(self, playerId, currentChips, totalChips, abortedGames) -> None:
         try:
             self.con.execute('INSERT INTO players VALUES (?, ?, ?, ?);', (playerId, currentChips, totalChips, abortedGames))
             self.con.commit()
@@ -97,7 +97,7 @@ class Database:
     def getPlayer(self, playerId):
         return self.con.execute('SELECT * FROM players WHERE playerId = ?', (playerId,)).fetchone()
     
-    def increasePlayerAbortedCounter(self, playerId: int):
+    def increasePlayerAbortedCounter(self, playerId: int) -> None:
         try:
             self.con.execute('UPDATE players SET abortedGamesTotal = abortedGamesTotal + 1 WHERE playerId = ?', (playerId,))
             self.con.commit()
@@ -105,7 +105,7 @@ class Database:
             print(e, file=sys.stderr)
             self.con.rollback()
 
-    def adjustPlayerChips(self, playerId: int, changeOfChips: int):
+    def adjustPlayerChips(self, playerId: int, changeOfChips: int) -> None:
         try:
             self.con.execute('UPDATE players SET currentChips = currentChips + ?, totalChips = totalChips + ? WHERE playerId = ?', (changeOfChips, changeOfChips, playerId,))
             self.con.commit()
@@ -113,8 +113,14 @@ class Database:
             print(e, file=sys.stderr)
             self.con.rollback()
 
+    def getPlayersWinrate(self, playerId: int) -> list[int]:
+        return (self.con.execute('SELECT COUNT(messageId) FROM challenges WHERE winner = ?', (playerId,)).fetchone()[0], self.con.execute('SELECT COUNT(messageId) FROM challenges WHERE authorId = ? OR acceptedBy = ?', (playerId, playerId)).fetchone()[0])
 
+    def getTopPlayersThisEpoch(self, limit=10):
+        return self.con.execute('SELECT * FROM players ORDER BY currentChips LIMIT ?', (limit, )).fetchall()
 
+    def getTopPlayersTotal(self, limit=10):
+        return self.con.execute('SELECT * FROM players ORDER BY totalChips LIMIT ?', (limit, )).fetchall()
 
 
 
@@ -135,11 +141,6 @@ class Database:
             else:
                 raise ValueError("Something went wrong!")
             
-    def getTopPlayersThisEpoch(self, limit=10):
-        return self.con.execute('SELECT * FROM players WHERE playerId = ? ORDER BY currentChips LIMIT ?', (playerId, limit)).fetchall()
-
-    def getTopPlayersTotal(self, limit=10):
-        return self.con.execute('SELECT * FROM players WHERE playerId = ? ORDER BY totalChips LIMIT ?', (playerId, limit)).fetchall()
 
 if __name__ == "__main__":
     os.remove("test1.db") 

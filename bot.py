@@ -78,6 +78,14 @@ class Player:
         else:
             return Player(*playerData)
     
+    @staticmethod
+    def getTopPlayersThisSeason(count: int) -> list[Player]:
+        return [Player(*playerData) for playerData in db.getTopPlayersThisEpoch(count)]
+    
+    @staticmethod
+    def getTopPlayersAllTime(count: int) -> list[Player]:
+        return [Player(*playerData) for playerData in db.getTopPlayersTotal(count)]
+    
     async def DM(self, message: str) -> bool:
         member = await bot.fetch_user(self.id)
         try:
@@ -88,14 +96,23 @@ class Player:
         except discord.errors.Forbidden:
             return False
         return True
+    
+    async def getName(self) -> str:
+        member = await bot.fetch_user(self.id)
+        return member.name
         
+
     def giveChips(self, number: int) -> None:
         if self.currentChips + number < 0:
             raise ValueError("You can't have negative chips!")
         db.adjustPlayerChips(self.id, number)
         self.currentChips += number
         self.totalChips += number
-         
+        
+    def getGameScore(self) -> list[int]:
+        wr = db.getPlayersWinrate(self.id)
+        return [wr[0], wr[1]]
+
 class Challenge:
     def __init__(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: ChallengeState | int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
         self.id: int = messageId
@@ -247,17 +264,17 @@ class Messenger:
         print("challenge accepted")
 
     async def confirmChallenge(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been accepted."]
+        messages = [f"Challenge with ID {challenge.id} has been confirmed.", f""]
         await self._sendAll(challenge, messages)
         print("challenge confirmed")
 
     async def startChallenge(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been accepted."]
+        messages = [f"Challenge with ID {challenge.id} has been started."]
         await self._sendAll(challenge, messages)
-        print("started confirmed")
+        print("started")
 
     async def claimChallenge(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been accepted."]
+        messages = [f"Challenge with ID {challenge.id} has been claimed."]
         await self._sendAll(challenge, messages)
         print("claimed confirmed")
 
@@ -356,28 +373,29 @@ async def create_challenge(ctx: discord.ApplicationContext, bet):
     try:
         challenge = Challenge.precreate(int(bet), ctx.author.id)
         await bot.messenger.createChallengeEntry(challenge)
-        await ctx.respond("Success!")
+        await ctx.respond("Success!", ephemeral=True)
     except ValueError as e:
-        await ctx.respond(str(e))
+        await ctx.respond(str(e), ephemeral=True)
 
 @bot.command(description="Register yourself into our super cool tournament!")
 async def register(ctx: discord.ApplicationContext):
     try:
         Player.create(ctx.author.id)
-        await ctx.respond("Success!")
+        await ctx.respond("Success!", ephemeral=True)
     except ValueError as e:
-        await ctx.respond(str(e))
+        await ctx.respond(str(e), ephemeral=True)
 
 @bot.command(description="Check your current number of chips!")
 async def chips(ctx: discord.ApplicationContext):
     try:
         player = Player.getById(ctx.author.id)
         if player != None:
-            await ctx.respond(f"You have {player.currentChips} chips! ({player.totalChips} across all periods)")
+            winrate = player.getGameScore()
+            await ctx.respond(f"You have {player.currentChips} chips! ({player.totalChips} across all periods)\nYour winrate is: {winrate[0]}/{winrate[1]}", ephemeral=True)
         else:
-            await ctx.respond(f"Please register!")
+            await ctx.respond(f"Please register!", ephemeral=True)
     except ValueError as e:
-        await ctx.respond(str(e))
+        await ctx.respond(str(e), ephemeral=True)
 
 @bot.command(description="Give yourself 10 chips so you can keep messing around!")
 async def add_chips(ctx: discord.ApplicationContext):
@@ -385,11 +403,25 @@ async def add_chips(ctx: discord.ApplicationContext):
         player = Player.getById(ctx.author.id)
         if player != None:
             player.giveChips(10)
-            await ctx.respond(f"Success!")
+            await ctx.respond(f"Success!", ephemeral=True)
         else:
-            await ctx.respond(f"Please register!")
+            await ctx.respond(f"Please register!", ephemeral=True)
     except ValueError as e:
         await ctx.respond(str(e))
+
+@bot.command(description="List the top 10 players")
+async def leaderboards(ctx: discord.ApplicationContext):
+    await ctx.respond("OK", ephemeral=True)
+    await ctx.channel.send(f"The top 10 players so far this run are:")
+    player: Player
+    for i, player in enumerate(Player.getTopPlayersThisSeason(10)):
+        winrate = player.getGameScore()
+        await ctx.channel.send(f"{i+1}. {await player.getName()} with {player.currentChips} chips")
+        
+    await ctx.channel.send(f"The top 10 players all times are:")
+    for i, player in enumerate(Player.getTopPlayersAllTime(10)):
+        winrate = player.getGameScore()
+        await ctx.channel.send(f"{i+1}. {await player.getName()} {player.totalChips}")
 
 
 bot.run(TOKEN)
