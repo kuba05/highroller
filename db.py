@@ -6,14 +6,6 @@ import os
 
 from typing import Optional
 
-#status:
-#0 not accepted
-#1 accepted
-#2 started
-#3 won by host
-#4 won by away
-#5 aborted manually
-#6 aborted because time ran out
 class Database:
     def __init__(self, name):
         self.con = sqlite3.connect(name)
@@ -27,7 +19,7 @@ class Database:
             [bet] INTEGER CHECK (bet > 0),
             [authorId] INTEGER NOT NULL,
             [acceptedBy] INTEGER,
-            [status] INTEGER,
+            [state] INTEGER,
             [timeout] INTEGER,
             [notes] TEXT,
             [gameName] TEXT,
@@ -48,10 +40,10 @@ class Database:
         COMMIT;
         """)
 
-    def createChallenge(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], status: int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
-        print(f"creating challenge with params: {messageId}, {bet}, {authorId}, {acceptedBy}, {status}, {timeout}, {notes}, {gameName}, {winner}", file=sys.stderr, flush=True)
+    def createChallenge(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
+        print(f"creating challenge with params: {messageId}, {bet}, {authorId}, {acceptedBy}, {state}, {timeout}, {notes}, {gameName}, {winner}", file=sys.stderr, flush=True)
         try:
-            self.con.execute('INSERT INTO challenges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);', (messageId, bet, authorId, acceptedBy, status, timeout, notes, gameName, winner))
+            self.con.execute('INSERT INTO challenges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);', (messageId, bet, authorId, acceptedBy, state, timeout, notes, gameName, winner))
             self.con.commit()
 
         except Exception as e:
@@ -63,7 +55,7 @@ class Database:
     
     def setChallengeState(self, challengeId: int, challengeState: Enum) -> None:
         try:
-            self.con.execute('UPDATE challenges SET status = ? WHERE messageId = ?', (challengeState.value, challengeId,))
+            self.con.execute('UPDATE challenges SET state = ? WHERE messageId = ?', (challengeState.value, challengeId))
             self.con.commit()
 
         except Exception as e:
@@ -72,16 +64,27 @@ class Database:
 
     def setChallengeAcceptedBy(self, challengeId: int, acceptedBy: int) -> None:
         try:
-            self.con.execute('UPDATE challenges SET acceptedBy = ? WHERE messageId = ?', (acceptedBy, challengeId,))
+            self.con.execute('UPDATE challenges SET acceptedBy = ? WHERE messageId = ?', (acceptedBy, challengeId))
             self.con.commit()
         except Exception as e:
             print(e, file=sys.stderr)
             self.con.rollback()
 
     def setChallengeName(self, challengeId: int, name: str) -> None:
-        pass
+        try:
+            self.con.execute('UPDATE challenges SET gameName = ? WHERE messageId = ?', (acceptedBy, name))
+            self.con.commit()
+        except Exception as e:
+            print(e, file=sys.stderr)
+            self.con.rollback()
     
-    def setChallengeWinner(self, challengeId: int, playerId: int) -> None:
+    def setChallengeWinner(self, challengeId: int, winnerId: int) -> None:
+        try:
+            self.con.execute('UPDATE challenges SET winner = ? WHERE messageId = ?', (winnerId, name))
+            self.con.commit()
+        except Exception as e:
+            print(e, file=sys.stderr)
+            self.con.rollback()
         pass
 
 
@@ -127,19 +130,12 @@ class Database:
 
 
 
-    def getChallenges(self, status=None):
-        try:
-            if status == None:
-                return self.con.execute('SELECT * FROM challenges;').fetchall()
-            return self.con.execute('SELECT * FROM challenges WHERE status = ?;', (status,)).fetchall()
+    def getChallengesByState(self, state: Enum) -> list[list[int]]:
+        return self.con.execute('SELECT * FROM challenges WHERE state = ?', (state.value, )).fetchall()
 
-        except Exception as e:
-            print(e, file=sys.stderr, flush=True)
-            self.con.rollback()
-            if type(e) == ValueError:
-                raise e
-            else:
-                raise ValueError("Something went wrong!")
+    def getTimeoutedChallengesByStateAndTimeoutTime(self, state: Enum, timeoutTime: int) -> list[list[int]]:
+        return self.con.execute('SELECT * FROM challenges WHERE state = ? AND timeout >= ?', (state.value, timeoutTime)).fetchall()
+
             
 
 if __name__ == "__main__":

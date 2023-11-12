@@ -4,10 +4,12 @@ from enum import Enum
 import os
 import json
 import discord
+from discord.ext import tasks
 from dotenv import load_dotenv
 from db import Database
 import sys
 import time
+import datetime
 
 from typing import Optional
 
@@ -31,16 +33,7 @@ ABORT_EMOJI = "❌"
 
 
 
-HELPMESSAGE = f"""
-    Commands:
-    /register - registeres you into the tournament
-    /create_challenge - creates a challenge in <#{challengesChannelId}> for other players to accept
-    /tokens - lists your current tokens
-
-    Associated channels:
-    <#{challengesChannelId}> - challenges are kept in this channel
-    <#{spamChannelId}> - please use your commands in this channel
-
+HELPMESSAGE = f"""TODO
 """
 
 class ChallengeState(Enum):
@@ -54,6 +47,11 @@ class ChallengeState(Enum):
 
 
 class Player:
+    """
+    Object to represent any player (discord user registered to this game).
+
+    Should be created using factory methods: create, getById, getTopPlayersThisSeason, getTopPlayersAllTime
+    """
     def __init__(self, playerId: int, currentChips: int, totalChips: int, abortedGames: int):
         self.id = playerId
         self.currentChips = currentChips
@@ -63,6 +61,9 @@ class Player:
 
     @staticmethod
     def create(playerId: int) -> Player:
+        """
+        Register a new player to the game. If player with same id already exists, ValueError is raised.
+        """
         if Player.getById(playerId) != None:
             raise ValueError("You are already registered!")
 
@@ -72,6 +73,9 @@ class Player:
 
     @staticmethod
     def getById(id: int) -> Optional[Player]:
+        """
+        Returns player with given id from db, or None if there is no match.
+        """
         playerData = db.getPlayer(id)
         if playerData == None:
             return None
@@ -87,6 +91,9 @@ class Player:
         return [Player(*playerData) for playerData in db.getTopPlayersTotal(count)]
     
     async def DM(self, message: str) -> bool:
+        """
+        Send DM to the user. Returns if sending the message was successful.
+        """
         member = await bot.fetch_user(self.id)
         try:
             if not self.dmChannel:
@@ -102,7 +109,7 @@ class Player:
         return member.name
         
 
-    def giveChips(self, number: int) -> None:
+    def adjustChips(self, number: int) -> None:
         if self.currentChips + number < 0:
             raise ValueError("You can't have negative chips!")
         db.adjustPlayerChips(self.id, number)
@@ -114,6 +121,15 @@ class Player:
         return [wr[0], wr[1]]
 
 class Challenge:
+    """
+    Object to represent a challenge created by players.
+
+    Should be constructed primarly by the following factory methods:
+    - precreate
+    - getById
+    - getAllChallengesByState
+    - getNewTimeouts
+    """
     def __init__(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: ChallengeState | int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
         self.id: int = messageId
         self.bet: int = bet
@@ -126,9 +142,17 @@ class Challenge:
         self.notes: str = notes
         self.gameName: Optional[str] = gameName
         self.winner: Optional[int] = winner
-        
+    
+    def __str__(self):
+        return f"Challenge {self.id} by {self.authorId}. State {self.state}. Bet {self.bet}. Timeout: {datetime.datetime.fromtimestamp(self.timeout)} Notes:\"{self.notes}\""
+    
     @staticmethod
     def precreate(bet: int, authorId: int, lastsForMinutes = 60*24*355, notes = "") -> Challenge:
+        """
+        Creates a challenge object with no connection to database.
+
+        To connect it to DB, call finishCreating method
+        """
         author = Player.getById(authorId)
         if author == None:
             raise ValueError("You are not registered!")
@@ -140,11 +164,28 @@ class Challenge:
 
     @staticmethod
     def getById(id: int) -> Optional[Challenge]:
+        """
+        Returns challenge with given id from db, or None if there is no match.
+        """
         challengeData = db.getChallenge(id)
         if challengeData == None:
             return None
         else:
             return Challenge(*challengeData)
+
+    @staticmethod
+    def getAllChallengesByState(state: ChallengeState) -> list[Challenge]:
+        """
+        Returns a list of all challenges with matching state
+        """
+        return [Challenge(*challenge) for challenge in db.getChallengesByState(state)]
+
+    @staticmethod
+    def getNewTimeouts() -> list[Challenge]:
+        """
+        Returns a list of all challenges which should timeout
+        """
+        return [Challenge(*challenge) for challenge in db.getTimeoutedChallengesByStateAndTimeoutTime(ChallengeState.CREATED, int(time.time()))]
 
     def finishCreating(self, messageId: int) -> None:
         if self.state != ChallengeState.PRECREATED:
@@ -191,19 +232,19 @@ class Challenge:
         db.setChallengeName(self.id, gameName)
         db.setChallengeState(self.id, ChallengeState.STARTED)
 
-    def claimVictory(self, playerId: int) -> None:
-        if playerId not in [self.authorId, self.acceptedBy]:
+    def claimVictory(self, winnerId: int) -> None:
+        if winnerId not in [self.authorId, self.acceptedBy]:
             raise ValueError("You can't finish a game you're not part of!")
         
         if self.state != ChallengeState.STARTED:
             raise ValueError("The game can't be finished!")
         
         db.setChallengeState(self.id, ChallengeState.FINISHED)
-        db.setChallengeWinner(self.id, playerId)
-        db.adjustPlayerChips(playerId, self.bet*2)
+        db.setChallengeWinner(self.id, winnerId)
+        db.adjustPlayerChips(winnerId, self.bet*2)
 
     def abort(self, byPlayer: int) -> None:
-        if byPlayer not in [self.authorId, self.acceptedBy]:
+        if byPlayer not in [self.authorId, self.acceptedBy, None]:
             raise ValueError("You can't abort a game you're not part of!")
         
         if self.state not in [ChallengeState.CREATED, ChallengeState.ACCEPTED]:
@@ -218,35 +259,53 @@ class Challenge:
 
 
 class Messenger:
+    """
+    Object to make sending messages easier.
+
+    Should be created with create factory method.
+    """
     messageChannel: discord.TextChannel
-    messages: list[discord.Message]
+    messages: set[discord.Message]
 
     @staticmethod
     async def create(messageChannelId: int) -> Messenger:
+        """
+        Creates Messenger object and links messageChannel to it.
+        """
         messenger = Messenger()
         messenger.messageChannel: discord.TextChannel = await bot.fetch_channel(messageChannelId)
-        messenger.messages = []
+        messenger.messages =  set()
         print(f"message channel: {messenger.messageChannel} (server: {messenger.messageChannel.guild})")
         return messenger
 
     async def _sendAll(self, challenge: Challenge, messages: list[str]) -> None:
-        recipients = [i for i in (Player.getById(challenge.authorId), Player.getById(challenge.acceptedBy)) if i != None]
+        """
+        Send all players associated with given challange DMs with given messages.
+        """
+        # use set to remove dublicities
+        recipients = {i for i in (Player.getById(challenge.authorId), Player.getById(challenge.acceptedBy)) if i != None}
         for recipient in recipients:
             for message in messages:
                 await recipient.DM(message)
 
+    async def _deleteChallengeMessage(self, challenge: Challenge) -> None:
+        message = await self.messageChannel.fetch_message(challenge.id)
+        self.messages.discard(challenge.id)
+        await message.delete()
+
     async def createChallengeEntry(self, challenge: Challenge) -> None:
-        print(f"sending to {self.messageChannel}")
+        print(f"Created challenge: {str(challenge)}")
         message = await self.messageChannel.send(f"Challenge by {challenge.authorId}")
         challenge.finishCreating(message.id)
-        self.messages.append(challenge.id)
+        self.messages.add(challenge.id)
         await message.add_reaction(ABORT_EMOJI)
         await message.add_reaction(ACCEPT_EMOJI)
 
-    async def _deleteChallengeMessage(self, challenge) -> None:
-        message = await self.messageChannel.fetch_message(challenge.id)
-        await message.delete()
-
+    async def loadAllChallengesAfterRestart(self) -> None:
+        for challange in Challenge.getAllChallengesByState(state=ChallengeState.CREATED):
+            self.messages.add(challange.id)
+            print("Loaded a challenge!")
+    
     async def abortChallenge(self, challenge: Challenge) -> None:
         messages = [f"Challenge with ID {challenge.id} has been aborted."]
         await self._sendAll(challenge, messages)
@@ -254,6 +313,14 @@ class Messenger:
         await self._deleteChallengeMessage(challenge)
 
         print("challenge aborted")
+
+    async def abortChallengeDueTimeout(self, challenge: Challenge) -> None:
+        messages = [f"Challenge with ID {challenge.id} has been aborted due timeout."]
+        await self._sendAll(challenge, messages)
+
+        await self._deleteChallengeMessage(challenge)
+
+        print("challenge aborted due timeout")
 
     async def acceptChallenge(self, challenge: Challenge) -> None:
         messages = [f"Challenge with ID {challenge.id} has been accepted."]
@@ -284,6 +351,8 @@ class MyBot(discord.Bot):
         print(f'Logged on as {self.user}!')
         print(f'guilds: {self.guilds}')
         self.messenger: Messenger = await Messenger.create(challengesChannelId)
+        await self.messenger.loadAllChallengesAfterRestart()
+        self.check_timeouts.start()
 
     async def on_message(self, message: discord.Message):
         if not isinstance(message.channel, discord.DMChannel):
@@ -334,19 +403,15 @@ class MyBot(discord.Bot):
 
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         print("reaction!")
-        if payload.channel_id != challengesChannelId:
-            print("wrong channel!")
-            return
-        
-        challenge = Challenge.getById(payload.message_id)
-        if challenge == None:
-            print("not a real challange")
+        if payload.message_id not in self.messenger.messages or payload.event_type != "REACTION_ADD":
+            print("not a recognized message!")
             return
         
         if payload.user_id == bot.user.id:
             print("my emoji!")
             return
         
+        challenge = Challenge.getById(payload.message_id)
         print(payload.emoji)
         print(challenge.state)
         try:
@@ -359,9 +424,20 @@ class MyBot(discord.Bot):
                 challenge.abort(payload.user_id)
                 await bot.messenger.abortChallenge(challenge)
             else:
-                print('out')
+                await self.get_message(payload.message_id).remove_reaction(payload.emoji, await bot.get_or_fetch_user(payload.user_id))
         except ValueError as e:
             print(str(e))
+            await self.get_message(payload.message_id).remove_reaction(payload.emoji, await bot.get_or_fetch_user(payload.user_id))
+
+    @tasks.loop(minutes=1)
+    async def check_timeouts(self):
+        print("checking for timeouts!")
+        for challenge in Challenge.getNewTimeouts():
+            try:
+                challenge.abort(None)
+                self.messenger.abortChallengeDueTimeout(challenge)
+            except ValueError as e:
+                print(e)
 
 
 bot = MyBot()
@@ -402,7 +478,7 @@ async def add_chips(ctx: discord.ApplicationContext):
     try:
         player = Player.getById(ctx.author.id)
         if player != None:
-            player.giveChips(10)
+            player.adjustChips(10)
             await ctx.respond(f"Success!", ephemeral=True)
         else:
             await ctx.respond(f"Please register!", ephemeral=True)
@@ -426,120 +502,3 @@ async def leaderboards(ctx: discord.ApplicationContext):
 
 bot.run(TOKEN)
 sys.exit()
-
-@bot.event
-async def on_ready():
-    print("ready")
-    print(f"invite link: https://discord.com/api/oauth2/authorize?client_id={CLIENT_ID}&permissions=268512336&scope=bot%20applications.commands")
-
-#@bot.event
-async def on_message(message):
-    print("recieved message", file=sys.stderr)
-    
-    if message.author == bot.user:
-        return
-
-    if message.channel.id == spamChannelId:
-        try:
-            print('deleting', file=sys.stderr)
-            await message.delete()
-        except:
-            pass
-            
-    # DM
-    if not message.guild:
-        try:
-            parts = message.content.split(" ")
-            gameId = parts[0]
-            challenge = db.getChallenge(gameId)
-            if challenge == None:
-                await message.channel.send("Game with this ID doesn't exist.")
-                raise ValueError("Non-existing game")
-            if message.author.id not in [challenge[2], challenge[3]]:
-                await message.channel.send("You are not in this game.")
-                raise ValueError("Not a member of the game")
-            
-            if parts[1] == "abort":
-                if not await abortChallenge(challenge[0], message.author.id):
-                    await message.channel.send("You can't abort this game. Perhaps it has already started?")
-                    raise ValueError("can't abort the game")
-
-                await message.channel.send("Game aborted.")
-                
-                if message.author.id == challenge[2]:
-                    sendTo = challenge[3]
-                else:
-                    sendTo = challenge[2]
-
-                await DM(sendTo, [f"Game {challenge[0]} has been aborted by your opponent :("])
-                return
-
-            if parts[1] == "start":
-                if challenge[4] != 1:
-                    await message.channel.send("This game has already started or been aborted!")
-                    raise ValueError("game already started/aborted")
-
-                if message.author.id != challenge[2]:
-                    await message.channel.send("Only host can start the game!")
-                    raise ValueError("Only host can start the game")
-
-                try:
-                    challenge = db.startChallenge(challenge[0], parts[2])
-                except ValueError as e:
-                    await message.channel.send(e)
-                    raise e
-
-                await message.channel.send(f"Game started. In game name is {challenge[7]}.")
-                await message.channel.send("If you win the game, send me:")
-                await message.channel.send(f"{challenge[0]} win")
-                await DM(challenge[3], [f"Game started. In game name is {challenge[7]}.", "If you win the game, send me:", f"{challenge[0]} win"])
-                return
-            
-            if parts[1] == "win":
-                if challenge[4] != 2:
-                    await message.channel.send("This game is not in progress!")
-                    raise ValueError("game not in progress")
-                try:
-                    db.winChallenge(challenge[0], message.author.id == challenge[2])
-                    x = "won" if message.author.id == challenge[2] else "lost"
-                    await DM(challenge[2], [f"Game over!. You've {x}"])
-                    x = "won" if message.author.id == challenge[3] else "lost"
-                    await DM(challenge[3], [f"Game over!. You've {x}"])
-                    print(f"game {challenge[0]} reported as win for {message.author.id}", file=sys.stderr)
-                except ValueError as e:
-                    await message.channel.send(e)
-                    raise e
-
-
-
-        except Exception as e:
-            print(f"recieved invalid DM from {message.author}", file=sys.stderr)
-            print(message.content, file=sys.stderr)
-            print(e, file=sys.stderr, flush=True)
-
-
-
-#@tasks.loop(minutes=1.0)
-async def timeoutOldChallenges():
-    print("checking timeouts", file=sys.stderr)
-    currentTime = time.time()
-    for challenge in db.getChallenges(status=0):
-        if (challenge[5] <= currentTime):
-            print("timeout", file=sys.stderr)
-            await abortChallenge(challenge, challenge[2], True)
-
-
-@bot.command(description="Create a new challenge for the Highroller tournament!")
-async def create_challenge(ctx: discord.ApplicationContext, bet: int):
-    """bet: discord.Option(int, description="number of chips you want to bet"),
-    time: discord.Option(int, description="How many minutes do you want this challenge to last? You can always manually cancel the challenge."),
-    notes: discord.Option(str, description="Any notes to be displayed with the challenge?")):"""
-    await ctx.defer(ephemeral=True)
-    try:
-        challenge, message = await Challenge.precreate(bet, ctx.author.id, )
-    except ValueError as e:
-        await ctx.followup.send(str(e))
-        return
-
-    await ctx.followup.send("done")
-    await setupReactions(ctx, challenge, message)
