@@ -234,7 +234,7 @@ class Challenge:
 
         db.setChallengeAcceptedBy(self.id, playerId)
         self.acceptedBy = playerId
-        
+
         db.adjustPlayerChips(playerId, - self.bet)
 
     def confirm(self, playerId: int) -> None:
@@ -382,19 +382,19 @@ challange timeouts in <t:{challenge.timeout}:t>
         await self._deleteChallengeMessage(challenge)
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been accepted.")
         await self._sendAll(challenge, "Waiting for host to confirm he's ready")
-        await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\n{challenge.id} confirm")
+        await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\nconfirm {challenge.id}")
 
         print("challenge accepted", challenge.id)
 
     async def confirmChallenge(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} is ready to start!")
         await self._sendAll(challenge, "Waiting for the host to start it!")
-        await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\n{challenge.id} start [gameName]")
+        await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\nstart {challenge.id} [gameName]")
         print("challenge confirmed", challenge.id)
 
     async def startChallenge(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been started! \nThe game name is {challenge.gameName}\n\nGLHF!")
-        await self._sendAll(challenge, f"Once the game is over, the winner should send me the following command:\n{challenge.id} win")
+        await self._sendAll(challenge, f"Once the game is over, the winner should send me the following command:\nwin {challenge.id}")
         print("started", challenge.id)
 
     async def claimChallenge(self, challenge: Challenge) -> None:
@@ -410,53 +410,99 @@ class MyBot(discord.Bot):
         await self.messenger.loadAllChallengesAfterRestart()
         self.check_timeouts.start()
 
+    def _load_challenge(self, idText: str) -> Challenge:
+        if not idText[0].isdigit():
+            raise ValueError("Invalid format! Your message should start with a game id followed by a command!")
+        
+        challenge = Challenge.getById(int(idText))
+        if challenge == None:
+            raise ValueError("I don't recognize this game!")
+        
+        return cast(Challenge, challenge)
+        
     async def on_message(self, message: discord.Message):
+        # if it's not a DM, ignore it
         if not isinstance(message.channel, discord.DMChannel):
             return
         
         if message.author.id == bot.user.id: # type: ignore
+            # if it's from me, ignore it
             print("it's me!")
             return
         
         print("recieved a DM!")
-        user = Player.getById(message.author.id)
-        if user == None:
-            await message.reply("I don't recognize you! Please register!")
-            return
-        
-        user = cast(Player, user)
 
-        contents = message.content.split(" ")
-        if len(contents) < 2 or not contents[0].isdigit():
-            await message.reply("Invalid format! Your message should start with a game id followed by a command!")
-            return
-        
-        challenge = Challenge.getById(int(contents[0]))
-        if challenge == None:
-            await message.reply("I don't recognize this game!")
-            return 
-        
-        challenge = cast(Challenge, challenge)
-
+        # handle recieving a DM
         try:
-            match contents[1]:
+            user = Player.getById(message.author.id)
+            if user == None:
+                raise ValueError("I don't recognize you! Please register using /register!")
+            
+            # just for typechecker
+            user = cast(Player, user)
+
+            args = message.content.strip().split(" ")
+
+            # shouldn't really happen, but just in case
+            if len(args) == 0:
+                raise ValueError("invalid number of arguments!")
+
+            match args[0]:
+                case "help":
+                    await message.reply(HELPMESSAGE)
+
+
+                # abort the challenge
                 case "abort":
+                    if len(args) != 2:
+                        raise ValueError("invalid number of arguments!")
+                    
+                    challenge = self._load_challenge(args[1])
+
                     challenge.abort(user.id)
                     await bot.messenger.abortChallenge(challenge)
+
+
                 case "accept":
+                    if len(args) != 2:
+                        raise ValueError("invalid number of arguments!")
+                    
+                    challenge = self._load_challenge(args[1])
+
                     challenge.accept(user.id)
                     await bot.messenger.acceptChallenge(challenge)
+
+
                 case "confirm":
+                    if len(args) != 2:
+                        raise ValueError("invalid number of arguments!")
+                    
+                    challenge = self._load_challenge(args[1])
+
                     challenge.confirm(user.id)
                     await bot.messenger.confirmChallenge(challenge)
+
+
                 case "start":
-                    if len(contents) < 3:
-                        raise ValueError("start command requires one argument: game_name")
-                    challenge.start(user.id, contents[2])
+                    if len(args) != 3:
+                        raise ValueError("invalid number of arguments!")
+                    
+                    challenge = self._load_challenge(args[1])
+
+                    challenge.start(user.id, args[2])
                     await bot.messenger.startChallenge(challenge)
+
+
                 case "win":
+                    if len(args) != 2:
+                        raise ValueError("invalid number of arguments!")
+                    
+                    challenge = self._load_challenge(args[1])
+
                     challenge.claimVictory(user.id)
                     await bot.messenger.claimChallenge(challenge)
+
+
 
         except ValueError as e:
             await message.reply(str(e))
