@@ -156,6 +156,9 @@ class Challenge:
         self.gameName: Optional[str] = gameName
         self.winner: Optional[int] = winner
     
+    async def toTextForMessages(self):
+        return f"Challenge {self.id} {await cast(Player, Player.getById(self.authorId)).getName()} vs {await cast(Player, Player.getById(self.acceptedBy)).getName() if self.acceptedBy else 'TBD'}"
+        
     def __str__(self):
         return f"Challenge {self.id} by {self.authorId}. State {self.state}. Bet {self.bet}. Timeout: {datetime.datetime.fromtimestamp(self.timeout)} Notes:\"{self.notes}\""
     
@@ -227,7 +230,11 @@ class Challenge:
             raise ValueError("You don't have enough chips")
         
         db.setChallengeState(self.id, ChallengeState.ACCEPTED)
+        self.state = ChallengeState.ACCEPTED
+
         db.setChallengeAcceptedBy(self.id, playerId)
+        self.acceptedBy = playerId
+        
         db.adjustPlayerChips(playerId, - self.bet)
 
     def confirm(self, playerId: int) -> None:
@@ -238,7 +245,8 @@ class Challenge:
             raise ValueError("The game is not waiting for confirmation!")
         
         db.setChallengeState(self.id, ChallengeState.CONFIRMED)
-    
+        self.state = ChallengeState.CONFIRMED
+
     def start(self, playerId: int, gameName: str) -> None:
         if playerId != self.authorId:
             raise ValueError("You can't start a game you're not hosting!")
@@ -247,7 +255,10 @@ class Challenge:
             raise ValueError("The game can't be started!")
         
         db.setChallengeName(self.id, gameName)
+        self.gameName = gameName
+
         db.setChallengeState(self.id, ChallengeState.STARTED)
+        self.state = ChallengeState.STARTED
 
     def claimVictory(self, winnerId: int) -> None:
         if winnerId not in [self.authorId, self.acceptedBy]:
@@ -257,7 +268,11 @@ class Challenge:
             raise ValueError("The game can't be finished!")
         
         db.setChallengeState(self.id, ChallengeState.FINISHED)
+        self.state = ChallengeState.FINISHED
+
         db.setChallengeWinner(self.id, winnerId)
+        self.winner = winnerId
+
         db.adjustPlayerChips(winnerId, self.bet*2)
 
     def abort(self, byPlayer: int) -> None:
@@ -297,72 +312,94 @@ class Messenger:
         print(f"message channel: {messenger.messageChannel} (server: {messenger.messageChannel.guild})")
         return messenger
 
-    async def _sendAll(self, challenge: Challenge, messages: list[str]) -> None:
+    async def _sendAll(self, challenge: Challenge, message: str) -> None:
         """
-        Send all players associated with given challange DMs with given messages.
+        Send all players associated with given challange DMs with given message.
         """
-        # use set to remove dublicities
-        recipients: set[Player] = {i for i in (Player.getById(challenge.authorId), Player.getById(challenge.acceptedBy)) if i != None} # type: ignore
-        for recipient in recipients:
-            for message in messages:
-                await recipient.DM(message)
+        await self._sendHost(challenge=challenge, message=message)
+        await self._sendAway(challenge=challenge, message=message)
+
+    async def _sendHost(self, challenge: Challenge, message: str) -> None:
+        """
+        Send the host of a given challange (if exists) a DM with given message.
+        """
+        if Player.getById(challenge.authorId) != None:
+            await cast(Player, Player.getById(challenge.authorId)).DM(message)
+
+    async def _sendAway(self, challenge: Challenge, message: str) -> None:
+        """
+        Send the away player of a given challange (if exists) a DM with given message.
+        """
+        if Player.getById(challenge.acceptedBy) != None:
+            await cast(Player, Player.getById(challenge.acceptedBy)).DM(message)
 
     async def _deleteChallengeMessage(self, challenge: Challenge) -> None:
         message = await self.messageChannel.fetch_message(challenge.id)
         self.messages.discard(challenge.id)
         await message.delete()
 
-    async def createChallengeEntry(self, challenge: Challenge) -> None:
-        print(f"Created challenge: {str(challenge)}")
-        message = await self.messageChannel.send(f"Challenge by {challenge.authorId}")
-        challenge.finishCreating(message.id)
-        self.messages.add(challenge.id)
-        await message.add_reaction(ABORT_EMOJI)
-        await message.add_reaction(ACCEPT_EMOJI)
-
     async def loadAllChallengesAfterRestart(self) -> None:
         for challange in Challenge.getAllChallengesByState(state=ChallengeState.CREATED):
             self.messages.add(challange.id)
             print("Loaded a challenge!")
+
+    async def createChallengeEntry(self, challenge: Challenge) -> None:
+        print(f"Created challenge: {str(challenge)}")
+        name = await Player.getById(challenge.authorId).getName() # type: ignore
+        message = await self.messageChannel.send(
+f"""
+## ⚔️ {name} challanges you! ⚔️
+bet: {challenge.bet}
+map: {challenge.map}
+tribe: {challenge.tribe}
+timelimit: Live game
+
+challange timeouts in <t:{challenge.timeout}:t>
+"""
+        )
+        challenge.finishCreating(message.id)
+        self.messages.add(challenge.id)
+        await message.add_reaction(ABORT_EMOJI)
+        await message.add_reaction(ACCEPT_EMOJI)
     
     async def abortChallenge(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been aborted."]
-        await self._sendAll(challenge, messages)
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been aborted.")
+        await self._sendAll(challenge, "If you wish to create another one, use the /create_challenge command!")
 
         await self._deleteChallengeMessage(challenge)
 
-        print("challenge aborted")
+        print("challenge aborted", challenge.id)
 
     async def abortChallengeDueTimeout(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been aborted due timeout."]
-        await self._sendAll(challenge, messages)
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been aborted due timeout.")
+        await self._sendAll(challenge, "If you wish to create another one, use the /create_challenge command!")
 
         await self._deleteChallengeMessage(challenge)
 
-        print("challenge aborted due timeout")
+        print("challenge aborted due timeout", challenge.id)
 
     async def acceptChallenge(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been accepted."]
-        await self._sendAll(challenge, messages)
-
         await self._deleteChallengeMessage(challenge)
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been accepted.")
+        await self._sendAll(challenge, "Waiting for host to confirm he's ready")
+        await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\n{challenge.id} confirm")
 
-        print("challenge accepted")
+        print("challenge accepted", challenge.id)
 
     async def confirmChallenge(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been confirmed.", f""]
-        await self._sendAll(challenge, messages)
-        print("challenge confirmed")
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} is ready to start!")
+        await self._sendAll(challenge, "Waiting for the host to start it!")
+        await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\n{challenge.id} start [gameName]")
+        print("challenge confirmed", challenge.id)
 
     async def startChallenge(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been started."]
-        await self._sendAll(challenge, messages)
-        print("started")
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been started! \nThe game name is {challenge.gameName}\n\nGLHF!")
+        await self._sendAll(challenge, f"Once the game is over, the winner should send me the following command:\n{challenge.id} win")
+        print("started", challenge.id)
 
     async def claimChallenge(self, challenge: Challenge) -> None:
-        messages = [f"Challenge with ID {challenge.id} has been claimed."]
-        await self._sendAll(challenge, messages)
-        print("claimed confirmed")
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been claimed by {await cast(Player, Player.getById(challenge.winner)).getName()}! \nIf you want to dispute the claim, contact the mods!")
+        print("claimed", challenge.id)
 
 
 class MyBot(discord.Bot):
@@ -417,7 +454,7 @@ class MyBot(discord.Bot):
                         raise ValueError("start command requires one argument: game_name")
                     challenge.start(user.id, contents[2])
                     await bot.messenger.startChallenge(challenge)
-                case "claim":
+                case "win":
                     challenge.claimVictory(user.id)
                     await bot.messenger.claimChallenge(challenge)
 
@@ -474,7 +511,7 @@ bot = MyBot()
 @discord.option("bet", int, min_value = 1)
 @discord.option("map", str, choices=MAP_OPTIONS)
 @discord.option("tribe", str, choices=TRIBE_OPTIONS)
-@discord.option("timeout", int, required=False, min_value = 1, default = 365*24*60, description="Number of minutes before this challange will automatically abort. (default never)")
+@discord.option("timeout", int, required=False, min_value = 1, default = 60, description="Number of minutes before this challange will automatically abort. (default is 60)")
 async def create_challenge(ctx: discord.ApplicationContext, bet, map, tribe, timeout):
     # you can use them as they were actual integers
     try:
@@ -497,9 +534,10 @@ async def chips(ctx: discord.ApplicationContext):
     try:
         player = Player.getById(ctx.author.id)
         if player != None:
+            await ctx.respond("Success!", ephemeral=True)
             player = cast(Player, player)
             winrate = player.getGameScore()
-            await ctx.respond(f"You have {player.currentChips} chips! ({player.totalChips} across all periods)\nYour winrate is: {winrate[0]}/{winrate[1]}", ephemeral=True)
+            await ctx.channel.send(f"You have {player.currentChips} chips! ({player.totalChips} across all periods)\nYour winrate is: {winrate[0]}/{winrate[1]}")
         else:
             await ctx.respond(f"Please register!", ephemeral=True)
     except ValueError as e:
@@ -520,7 +558,7 @@ async def add_chips(ctx: discord.ApplicationContext):
 
 @bot.command(description="List the top 10 players")
 async def leaderboards(ctx: discord.ApplicationContext):
-    await ctx.respond("OK", ephemeral=True)
+    await ctx.respond("Success!", ephemeral=True)
     await ctx.channel.send(f"The top 10 players so far this run are:")
     player: Player
     for i, player in enumerate(Player.getTopPlayersThisSeason(10)):
@@ -532,5 +570,9 @@ async def leaderboards(ctx: discord.ApplicationContext):
         winrate = player.getGameScore()
         await ctx.channel.send(f"{i+1}. {await player.getName()} {player.totalChips}")
 
+@bot.command(description="Checkout how to use this bot!")
+async def help(ctx: discord.ApplicationContext):
+    await ctx.respond("Success!")
+    await ctx.channel.send(HELPMESSAGE)
 
 bot.run(TOKEN)

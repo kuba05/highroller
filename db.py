@@ -87,7 +87,6 @@ class Database:
         except Exception as e:
             print(e, file=sys.stderr)
             self.con.rollback()
-        pass
 
 
     def createPlayer(self, playerId, currentChips, totalChips, abortedGames) -> None:
