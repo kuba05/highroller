@@ -394,7 +394,7 @@ challange timeouts in <t:{challenge.timeout}:t>
 
     async def startChallenge(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been started! \nThe game name is {challenge.gameName}\n\nGLHF!")
-        await self._sendAll(challenge, f"Once the game is over, the winner should send me the following command:\nwin {challenge.id}")
+        await self._sendAll(challenge, f"Once the game is over, the winner should send me the following command:\nwin {challenge.id} ")
         print("started", challenge.id)
 
     async def claimChallenge(self, challenge: Challenge) -> None:
@@ -484,12 +484,13 @@ class MyBot(discord.Bot):
 
 
                 case "start":
-                    if len(args) != 3:
+                    if len(args) > 2:
                         raise ValueError("invalid number of arguments!")
                     
                     challenge = self._load_challenge(args[1])
 
-                    challenge.start(user.id, args[2])
+                    # game name can have multiple words, so we will do a bit of hacking :D
+                    challenge.start(user.id, " ".join(args[2:]))
                     await bot.messenger.startChallenge(challenge)
 
 
