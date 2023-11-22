@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from typing import cast
+
 from enum import Enum
 import os
-import json
 import discord
 from discord.ext import tasks
 from dotenv import load_dotenv
@@ -14,6 +15,20 @@ import datetime
 from typing import Optional
 
 STARTING_CHIPS=10
+SIZES = ["small", "normal", "large", "huge"]
+SURFACES = ["drylands", "lakes", "continents"]
+TRIBE_OPTIONS = ["Xin-xi", "Imperius", "Bardur", "Oumaji", "Kickoo", "Hoodrick", "Luxidoor", "Vengir", "Zebasi", "Ai-Mo", "Quetzali", "Yădakk", "Aquarion", "∑∫ỹriȱŋ", "Polaris", "Cymanti"]
+
+MAP_OPTIONS = [size + " " + surface for size in SIZES for surface in SURFACES]
+
+
+ACCEPT_EMOJI = "⚔"
+ABORT_EMOJI = "❌"
+HELPMESSAGE = f"""TODO"""
+
+
+
+
 
 load_dotenv()
 intents = discord.Intents.default()
@@ -23,18 +38,14 @@ db = Database('db.db')
 
 CLIENT_ID = os.getenv('CLIENT_ID')
 TOKEN = os.getenv('TOKEN')
-challengesChannelId = int(os.getenv('CHALLENGES'))
-spamChannelId = int(os.getenv('SPAM'))
+
+
+challengesChannelId = int(os.getenv('CHALLENGES')) # type: ignore
+spamChannelId = int(os.getenv('SPAM')) # type: ignore
 
 
 
-ACCEPT_EMOJI = "⚔"
-ABORT_EMOJI = "❌"
 
-
-
-HELPMESSAGE = f"""TODO
-"""
 
 class ChallengeState(Enum):
     PRECREATED = 0
@@ -72,7 +83,7 @@ class Player:
         return player
 
     @staticmethod
-    def getById(id: int) -> Optional[Player]:
+    def getById(id: Optional[int]) -> Optional[Player]:
         """
         Returns player with given id from db, or None if there is no match.
         """
@@ -96,10 +107,7 @@ class Player:
         """
         member = await bot.fetch_user(self.id)
         try:
-            if not self.dmChannel:
-                self.dmChannel = await member.create_dm()
-
-            await self.dmChannel.send(message)
+            await member.send(message)
         except discord.errors.Forbidden:
             return False
         return True
@@ -130,15 +138,20 @@ class Challenge:
     - getAllChallengesByState
     - getNewTimeouts
     """
-    def __init__(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: ChallengeState | int, timeout: Optional[int], notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
+    def __init__(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: ChallengeState | int, timeout: Optional[int], map: str, tribe: str, notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
         self.id: int = messageId
         self.bet: int = bet
         self.authorId: int = authorId
         self.acceptedBy: Optional[int] = acceptedBy
+
         if type(state) == type(1):
             state = ChallengeState(state)
+        state = cast(ChallengeState, state)
         self.state: ChallengeState = state
+
         self.timeout: Optional[int] = timeout
+        self.map: str = map
+        self.tribe: str = tribe
         self.notes: str = notes
         self.gameName: Optional[str] = gameName
         self.winner: Optional[int] = winner
@@ -147,7 +160,7 @@ class Challenge:
         return f"Challenge {self.id} by {self.authorId}. State {self.state}. Bet {self.bet}. Timeout: {datetime.datetime.fromtimestamp(self.timeout)} Notes:\"{self.notes}\""
     
     @staticmethod
-    def precreate(bet: int, authorId: int, lastsForMinutes = 60*24*355, notes = "") -> Challenge:
+    def precreate(bet: int, authorId: int, map:str, tribe: str, lastsForMinutes, notes = "") -> Challenge:
         """
         Creates a challenge object with no connection to database.
 
@@ -156,10 +169,13 @@ class Challenge:
         author = Player.getById(authorId)
         if author == None:
             raise ValueError("You are not registered!")
+        
+        author = cast(Player, author)
         if author.currentChips < bet:
             raise ValueError("You don't have enough chips")
 
-        challenge = Challenge(None, bet, authorId, None, ChallengeState.PRECREATED, int(time.time() + lastsForMinutes*60), notes, None, None)
+        # let's use a proxy value of -1 for id
+        challenge = Challenge(messageId=-1, bet=bet, authorId=authorId, acceptedBy=None, state=ChallengeState.PRECREATED, timeout=int(time.time() + lastsForMinutes*60), map=map, tribe=tribe, notes=notes, gameName=None, winner=None)
         return challenge
 
     @staticmethod
@@ -193,7 +209,7 @@ class Challenge:
         self.id = messageId
         self.state = ChallengeState.CREATED
         db.adjustPlayerChips(self.authorId, -self.bet)
-        db.createChallenge(self.id, self.bet, self.authorId, self.acceptedBy, self.state.value, self.timeout, self.notes, self.gameName, self.winner)
+        db.createChallenge(messageId=self.id, bet=self.bet, authorId=self.authorId, acceptedBy=self.acceptedBy, state=self.state, timeout=self.timeout, map=self.map, tribe=self.tribe, notes=self.notes, gameName=self.gameName, winner=self.winner)
         
     def accept(self, playerId: int) -> None:
         if self.state != ChallengeState.CREATED:
@@ -206,6 +222,7 @@ class Challenge:
         player = Player.getById(playerId)
         if player == None:
             raise ValueError("You are not registered!")
+        player = cast(Player, player)
         if player.currentChips < self.bet:
             raise ValueError("You don't have enough chips")
         
@@ -254,7 +271,7 @@ class Challenge:
         db.adjustPlayerChips(self.authorId, self.bet)
 
         if self.state == ChallengeState.ACCEPTED:
-            db.adjustPlayerChips(self.acceptedBy, self.bet)
+            db.adjustPlayerChips(cast(int, self.acceptedBy), self.bet)
             db.increasePlayerAbortedCounter(byPlayer)
 
 
@@ -265,7 +282,7 @@ class Messenger:
     Should be created with create factory method.
     """
     messageChannel: discord.TextChannel
-    messages: set[discord.Message]
+    messages: set[int]
 
     @staticmethod
     async def create(messageChannelId: int) -> Messenger:
@@ -273,7 +290,9 @@ class Messenger:
         Creates Messenger object and links messageChannel to it.
         """
         messenger = Messenger()
-        messenger.messageChannel: discord.TextChannel = await bot.fetch_channel(messageChannelId)
+
+        messenger.messageChannel: discord.TextChannel = await bot.fetch_channel(messageChannelId) # type: ignore
+
         messenger.messages =  set()
         print(f"message channel: {messenger.messageChannel} (server: {messenger.messageChannel.guild})")
         return messenger
@@ -283,7 +302,7 @@ class Messenger:
         Send all players associated with given challange DMs with given messages.
         """
         # use set to remove dublicities
-        recipients = {i for i in (Player.getById(challenge.authorId), Player.getById(challenge.acceptedBy)) if i != None}
+        recipients: set[Player] = {i for i in (Player.getById(challenge.authorId), Player.getById(challenge.acceptedBy)) if i != None} # type: ignore
         for recipient in recipients:
             for message in messages:
                 await recipient.DM(message)
@@ -347,7 +366,7 @@ class Messenger:
 
 
 class MyBot(discord.Bot):
-    async def on_ready(self):
+    async def on_ready(self: MyBot) -> None:
         print(f'Logged on as {self.user}!')
         print(f'guilds: {self.guilds}')
         self.messenger: Messenger = await Messenger.create(challengesChannelId)
@@ -358,7 +377,7 @@ class MyBot(discord.Bot):
         if not isinstance(message.channel, discord.DMChannel):
             return
         
-        if message.author.id == bot.user.id:
+        if message.author.id == bot.user.id: # type: ignore
             print("it's me!")
             return
         
@@ -368,6 +387,8 @@ class MyBot(discord.Bot):
             await message.reply("I don't recognize you! Please register!")
             return
         
+        user = cast(Player, user)
+
         contents = message.content.split(" ")
         if len(contents) < 2 or not contents[0].isdigit():
             await message.reply("Invalid format! Your message should start with a game id followed by a command!")
@@ -377,6 +398,8 @@ class MyBot(discord.Bot):
         if challenge == None:
             await message.reply("I don't recognize this game!")
             return 
+        
+        challenge = cast(Challenge, challenge)
 
         try:
             match contents[1]:
@@ -407,11 +430,12 @@ class MyBot(discord.Bot):
             print("not a recognized message!")
             return
         
-        if payload.user_id == bot.user.id:
+        if payload.user_id == bot.user.id: # type: ignore
             print("my emoji!")
             return
         
-        challenge = Challenge.getById(payload.message_id)
+        challenge = cast(Challenge, Challenge.getById(payload.message_id))
+
         print(payload.emoji)
         print(challenge.state)
         try:
@@ -424,10 +448,14 @@ class MyBot(discord.Bot):
                 challenge.abort(payload.user_id)
                 await bot.messenger.abortChallenge(challenge)
             else:
-                await self.get_message(payload.message_id).remove_reaction(payload.emoji, await bot.get_or_fetch_user(payload.user_id))
+                message = self.get_message(payload.message_id)
+                if message != None:
+                    await message.remove_reaction(payload.emoji, await bot.get_or_fetch_user(payload.user_id)) # type: ignore
         except ValueError as e:
             print(str(e))
-            await self.get_message(payload.message_id).remove_reaction(payload.emoji, await bot.get_or_fetch_user(payload.user_id))
+            message = self.get_message(payload.message_id)
+            if message != None:
+                await message.remove_reaction(payload.emoji, await bot.get_or_fetch_user(payload.user_id)) # type: ignore
 
     @tasks.loop(minutes=1)
     async def check_timeouts(self):
@@ -435,7 +463,7 @@ class MyBot(discord.Bot):
         for challenge in Challenge.getNewTimeouts():
             try:
                 challenge.abort(None)
-                self.messenger.abortChallengeDueTimeout(challenge)
+                await self.messenger.abortChallengeDueTimeout(challenge)
             except ValueError as e:
                 print(e)
 
@@ -444,10 +472,13 @@ bot = MyBot()
 
 @bot.command(description="Create a new challenge for the Highroller tournament!")
 @discord.option("bet", int, min_value = 1)
-async def create_challenge(ctx: discord.ApplicationContext, bet):
+@discord.option("map", str, choices=MAP_OPTIONS)
+@discord.option("tribe", str, choices=TRIBE_OPTIONS)
+@discord.option("timeout", int, required=False, min_value = 1, default = 365*24*60, description="Number of minutes before this challange will automatically abort. (default never)")
+async def create_challenge(ctx: discord.ApplicationContext, bet, map, tribe, timeout):
     # you can use them as they were actual integers
     try:
-        challenge = Challenge.precreate(int(bet), ctx.author.id)
+        challenge = Challenge.precreate(bet = int(bet), authorId=ctx.author.id, map=map, tribe=tribe, lastsForMinutes=timeout)
         await bot.messenger.createChallengeEntry(challenge)
         await ctx.respond("Success!", ephemeral=True)
     except ValueError as e:
@@ -466,6 +497,7 @@ async def chips(ctx: discord.ApplicationContext):
     try:
         player = Player.getById(ctx.author.id)
         if player != None:
+            player = cast(Player, player)
             winrate = player.getGameScore()
             await ctx.respond(f"You have {player.currentChips} chips! ({player.totalChips} across all periods)\nYour winrate is: {winrate[0]}/{winrate[1]}", ephemeral=True)
         else:
@@ -478,6 +510,7 @@ async def add_chips(ctx: discord.ApplicationContext):
     try:
         player = Player.getById(ctx.author.id)
         if player != None:
+            player = cast(Player, player)
             player.adjustChips(10)
             await ctx.respond(f"Success!", ephemeral=True)
         else:
@@ -501,4 +534,3 @@ async def leaderboards(ctx: discord.ApplicationContext):
 
 
 bot.run(TOKEN)
-sys.exit()
