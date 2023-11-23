@@ -631,4 +631,12 @@ async def help(ctx: discord.ApplicationContext):
     await ctx.respond("Success!")
     await ctx.channel.send(HELPMESSAGE)
 
+@bot.command()
+async def shutdown(ctx: discord.ApplicationContext):
+    if await bot.is_owner(ctx.user):
+        await ctx.respond("Exiting")
+        print("exiting")
+        exit()
+    await ctx.respond("No Permissions")
+
 bot.run(TOKEN)
