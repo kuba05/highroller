@@ -6,6 +6,8 @@ import os
 
 from typing import Optional, Any, cast
 
+import logging
+
 class Database:
     def __init__(self, name):
         self.con = sqlite3.connect(name)
@@ -43,13 +45,14 @@ class Database:
         """)
 
     def createChallenge(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: Enum, timeout: Optional[int], map: str, tribe: str, notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
-        print(f"creating challenge with params: {messageId}, {bet}, {authorId}, {acceptedBy}, {state}, {timeout}, {notes}, {gameName}, {winner}", file=sys.stderr, flush=True)
+        logging.info(f"creating challenge with params: {messageId}, {bet}, {authorId}, {acceptedBy}, {state}, {timeout}, {notes}, {gameName}, {winner}")
         try:
             self.con.execute('INSERT INTO challenges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);', (messageId, bet, authorId, acceptedBy, state.value, timeout, map, tribe, notes, gameName, winner))
             self.con.commit()
 
         except Exception as e:
-            print(e, file=sys.stderr)
+            logging.error(f"Error creating challange {messageId}")
+            logging.error(str(e))
             self.con.rollback()
 
     def getChallenge(self, challengeId) -> list[Any]:
@@ -61,7 +64,8 @@ class Database:
             self.con.commit()
 
         except Exception as e:
-            print(e, file=sys.stderr)
+            logging.error(f"Error setting state of a challange {challengeId}")
+            logging.error(str(e))
             self.con.rollback()
 
     def setChallengeAcceptedBy(self, challengeId: int, acceptedBy: int) -> None:
@@ -69,7 +73,8 @@ class Database:
             self.con.execute('UPDATE challenges SET acceptedBy = ? WHERE messageId = ?', (acceptedBy, challengeId))
             self.con.commit()
         except Exception as e:
-            print(e, file=sys.stderr)
+            logging.error(f"Error accepting a challange {challengeId}")
+            logging.error(str(e))
             self.con.rollback()
 
     def setChallengeName(self, challengeId: int, name: str) -> None:
@@ -77,7 +82,8 @@ class Database:
             self.con.execute('UPDATE challenges SET gameName = ? WHERE messageId = ?', (name, challengeId))
             self.con.commit()
         except Exception as e:
-            print(e, file=sys.stderr)
+            logging.error(f"Error setting name of a challange {challengeId}")
+            logging.error(str(e))
             self.con.rollback()
     
     def setChallengeWinner(self, challengeId: int, winnerId: int) -> None:
@@ -85,7 +91,8 @@ class Database:
             self.con.execute('UPDATE challenges SET winner = ? WHERE messageId = ?', (winnerId, challengeId))
             self.con.commit()
         except Exception as e:
-            print(e, file=sys.stderr)
+            logging.error(f"Error setting winner of a challange {challengeId}")
+            logging.error(str(e))
             self.con.rollback()
 
 
@@ -95,7 +102,8 @@ class Database:
             self.con.commit()
 
         except Exception as e:
-            print(e, file=sys.stderr)
+            logging.error(f"Error creating player {playerId}")
+            logging.error(str(e))
             self.con.rollback()
 
     def getPlayer(self, playerId):
@@ -106,7 +114,8 @@ class Database:
             self.con.execute('UPDATE players SET abortedGamesTotal = abortedGamesTotal + 1 WHERE playerId = ?', (playerId,))
             self.con.commit()
         except Exception as e:
-            print(e, file=sys.stderr)
+            logging.error(f"Error increasing player abort counter {playerId}")
+            logging.error(str(e))
             self.con.rollback()
 
     def adjustPlayerChips(self, playerId: int, changeOfChips: int) -> None:
@@ -114,7 +123,8 @@ class Database:
             self.con.execute('UPDATE players SET currentChips = currentChips + ?, totalChips = totalChips + ? WHERE playerId = ?', (changeOfChips, changeOfChips, playerId,))
             self.con.commit()
         except Exception as e:
-            print(e, file=sys.stderr)
+            logging.error(f"Error adjusting player chips counter {playerId}")
+            logging.error(str(e))
             self.con.rollback()
 
     def getPlayersWinrate(self, playerId: int) -> list[int]:

@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import cast, Optional
 
 from enum import Enum
 import os
 import discord
 from discord.ext import tasks
 from dotenv import load_dotenv
-from db import Database
 import sys
 import time
 import datetime
 
-from typing import Optional
+import logging
+from db import Database
+
+
+logging.basicConfig(filename="highroller.log", encoding="utf-8", level=logging.DEBUG, format='%(levelname)s:%(asctime)s:%(message)s', datefmt='%Y-%m-%d-%H-%M-%S')
 
 STARTING_CHIPS=10
 SIZES = ["small", "normal", "large", "huge"]
@@ -42,8 +45,6 @@ TOKEN = os.getenv('TOKEN')
 
 challengesChannelId = int(os.getenv('CHALLENGES')) # type: ignore
 spamChannelId = int(os.getenv('SPAM')) # type: ignore
-
-
 
 
 
@@ -309,7 +310,7 @@ class Messenger:
         messenger.messageChannel: discord.TextChannel = await bot.fetch_channel(messageChannelId) # type: ignore
 
         messenger.messages =  set()
-        print(f"message channel: {messenger.messageChannel} (server: {messenger.messageChannel.guild})")
+        logging.debug(f"message channel: {messenger.messageChannel} (server: {messenger.messageChannel.guild})")
         return messenger
 
     async def _sendAll(self, challenge: Challenge, message: str) -> None:
@@ -341,10 +342,10 @@ class Messenger:
     async def loadAllChallengesAfterRestart(self) -> None:
         for challange in Challenge.getAllChallengesByState(state=ChallengeState.CREATED):
             self.messages.add(challange.id)
-            print("Loaded a challenge!")
+            logging.info("Loaded a challenge after restart!")
 
     async def createChallengeEntry(self, challenge: Challenge) -> None:
-        print(f"Created challenge: {str(challenge)}")
+        logging.info(f"Created challenge: {str(challenge)}")
         name = await Player.getById(challenge.authorId).getName() # type: ignore
         message = await self.messageChannel.send(
 f"""
@@ -368,7 +369,7 @@ challange timeouts in <t:{challenge.timeout}:t>
 
         await self._deleteChallengeMessage(challenge)
 
-        print("challenge aborted", challenge.id)
+        logging.info(f"challenge aborted {challenge.id}")
 
     async def abortChallengeDueTimeout(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been aborted due timeout.")
@@ -376,7 +377,7 @@ challange timeouts in <t:{challenge.timeout}:t>
 
         await self._deleteChallengeMessage(challenge)
 
-        print("challenge aborted due timeout", challenge.id)
+        logging.info(f"challenge aborted due timeout {challenge.id}")
 
     async def acceptChallenge(self, challenge: Challenge) -> None:
         await self._deleteChallengeMessage(challenge)
@@ -384,28 +385,28 @@ challange timeouts in <t:{challenge.timeout}:t>
         await self._sendAll(challenge, "Waiting for host to confirm he's ready")
         await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\nconfirm {challenge.id}")
 
-        print("challenge accepted", challenge.id)
+        logging.info(f"challenge accepted {challenge.id}")
 
     async def confirmChallenge(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} is ready to start!")
         await self._sendAll(challenge, "Waiting for the host to start it!")
         await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\nstart {challenge.id} [gameName]")
-        print("challenge confirmed", challenge.id)
+        logging.info(f"challenge confirmed {challenge.id}")
 
     async def startChallenge(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been started! \nThe game name is {challenge.gameName}\n\nGLHF!")
         await self._sendAll(challenge, f"Once the game is over, the winner should send me the following command:\nwin {challenge.id} ")
-        print("started", challenge.id)
+        logging.info("started {challenge.id}")
 
     async def claimChallenge(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been claimed by {await cast(Player, Player.getById(challenge.winner)).getName()}! \nIf you want to dispute the claim, contact the mods!")
-        print("claimed", challenge.id)
+        logging.info("claimed {challenge.id}")
 
 
 class MyBot(discord.Bot):
     async def on_ready(self: MyBot) -> None:
-        print(f'Logged on as {self.user}!')
-        print(f'guilds: {self.guilds}')
+        print(f'Logged on as {self.user}!', file=sys.stderr)
+        print(f'guilds: {self.guilds}', file=sys.stderr)
         self.messenger: Messenger = await Messenger.create(challengesChannelId)
         await self.messenger.loadAllChallengesAfterRestart()
         self.check_timeouts.start()
@@ -427,15 +428,16 @@ class MyBot(discord.Bot):
         
         if message.author.id == bot.user.id: # type: ignore
             # if it's from me, ignore it
-            print("it's me!")
+            logging.debug("on_message thinks it's me!")
             return
         
-        print("recieved a DM!")
+        logging.info("recieved a DM!")
 
         # handle recieving a DM
         try:
             user = Player.getById(message.author.id)
             if user == None:
+                logging.info("user not recognized")
                 raise ValueError("I don't recognize you! Please register using /register!")
             
             # just for typechecker
@@ -445,6 +447,7 @@ class MyBot(discord.Bot):
 
             # shouldn't really happen, but just in case
             if len(args) == 0:
+                logging.info("no args recieved")
                 raise ValueError("invalid number of arguments!")
 
             match args[0]:
@@ -504,31 +507,34 @@ class MyBot(discord.Bot):
                     await bot.messenger.claimChallenge(challenge)
 
 
+                case _:
+                    raise ValueError("unknown command. Try \"help\" command.")
 
         except ValueError as e:
+            logging.warning("Error handling DM")
+            logging.warning(str(e))
             await message.reply(str(e))
 
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
-        print("reaction!")
         if payload.message_id not in self.messenger.messages or payload.event_type != "REACTION_ADD":
-            print("not a recognized message!")
+            logging.debug("reaction to an unrecognized message!")
             return
         
         if payload.user_id == bot.user.id: # type: ignore
-            print("my emoji!")
+            logging.debug("my emoji!")
             return
         
         challenge = cast(Challenge, Challenge.getById(payload.message_id))
 
-        print(payload.emoji)
-        print(challenge.state)
+        logging.info(f"recieved emoji {payload.emoji}")
+        logging.debug("Challange state {challenge.state}")
         try:
             if str(payload.emoji) == ACCEPT_EMOJI:
-                print("accepted")
+                logging.info("accepted reaction")
                 challenge.accept(payload.user_id)
                 await bot.messenger.acceptChallenge(challenge)
             elif str(payload.emoji) == ABORT_EMOJI:
-                print("aborted")
+                logging.info("aborted reaction")
                 challenge.abort(payload.user_id)
                 await bot.messenger.abortChallenge(challenge)
             else:
@@ -536,20 +542,23 @@ class MyBot(discord.Bot):
                 if message != None:
                     await message.remove_reaction(payload.emoji, await bot.get_or_fetch_user(payload.user_id)) # type: ignore
         except ValueError as e:
-            print(str(e))
+            logging.warning("error handeling emoji")
+            logging.warning(str(e))
             message = self.get_message(payload.message_id)
             if message != None:
                 await message.remove_reaction(payload.emoji, await bot.get_or_fetch_user(payload.user_id)) # type: ignore
 
     @tasks.loop(minutes=1)
     async def check_timeouts(self):
-        print("checking for timeouts!")
+        logging.info("checking for timeouts!")
         for challenge in Challenge.getNewTimeouts():
             try:
+                logging.info(f"challange {challenge.id} aborted due to timeout")
                 challenge.abort(None)
                 await self.messenger.abortChallengeDueTimeout(challenge)
             except ValueError as e:
-                print(e)
+                logging.warning("error aborting challange due to timeout")
+                logging.warning(e)
 
 
 bot = MyBot()
