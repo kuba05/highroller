@@ -664,7 +664,7 @@ async def chips(ctx: discord.ApplicationContext, user: discord.User):
             await ctx.respond("Success!", ephemeral=True)
             player = cast(Player, player)
             winrate = player.getGameScore()
-            await ctx.channel.send(f"{await player.getName()} has {player.currentChips} chips! ({player.totalChips} across all periods)\Winrate is: {winrate[0]}/{winrate[1]}")
+            await ctx.channel.send(f"{await player.getName()} has {player.currentChips} chips! ({player.totalChips} across all periods)\nWinrate is: {winrate[0]}/{winrate[1]}")
         else:
             await ctx.respond(f"Player isn't registered!", ephemeral=True)
     except ValueError as e:
