@@ -470,7 +470,7 @@ class MyBot(discord.Bot):
         
         return cast(Challenge, challenge)
     
-    def _getListOfAllChallenges(self, open: bool, inProgress: bool, done: bool, aborted: bool, withPlayer: Optional[Player]) -> list[Challenge]:
+    async def _getListOfAllChallenges(self, open: bool, inProgress: bool, done: bool, aborted: bool, withPlayer: Optional[Player]) -> str:
         """
         returns all challenges with given state.
 
@@ -494,8 +494,8 @@ class MyBot(discord.Bot):
         if withPlayer != None:
             withPlayer = cast(Player, withPlayer)
             allChallenges = [challenge for challenge in allChallenges if challenge.authorId == withPlayer.id or challenge.acceptedBy == withPlayer.id]
-
-        return allChallenges
+        
+        return "\n\n".join([await challenge.toTextForMessages() for challenge in allChallenges])
 
     async def _accept_challenge(self, challenge: Challenge, player: Player) -> None:
         challenge.accept(player.id)
@@ -581,7 +581,7 @@ class MyBot(discord.Bot):
                         if arg in ["aborted"]:
                             aborted = True
 
-                    listOfAllChallenges = "\n\n".join([await challenge.toTextForMessages() for challenge in self._getListOfAllChallenges(done=done, open=open, inProgress=current, aborted=aborted, withPlayer=player if onlyMine else None)])
+                    listOfAllChallenges = await self._getListOfAllChallenges(done=done, open=open, inProgress=current, aborted=aborted, withPlayer=player if onlyMine else None)
                     await message.reply(listOfAllChallenges)
                 
 
