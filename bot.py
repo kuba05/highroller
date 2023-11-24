@@ -651,17 +651,22 @@ async def register(ctx: discord.ApplicationContext):
     except ValueError as e:
         await ctx.respond(str(e), ephemeral=True)
 
-@bot.command(description="Check your current number of chips!")
-async def chips(ctx: discord.ApplicationContext):
+@bot.command(description="Checkout someone's current number of chips!")
+@discord.option("user", discord.User, description = "The player who you want to check out! (default is you)", required = False, default = None)
+async def chips(ctx: discord.ApplicationContext, user: discord.User):
     try:
-        player = Player.getById(ctx.author.id)
+        if user != None:
+            player = Player.getById(user.id)
+        else:
+            player = Player.getById(ctx.author.id)
+
         if player != None:
             await ctx.respond("Success!", ephemeral=True)
             player = cast(Player, player)
             winrate = player.getGameScore()
-            await ctx.channel.send(f"You have {player.currentChips} chips! ({player.totalChips} across all periods)\nYour winrate is: {winrate[0]}/{winrate[1]}")
+            await ctx.channel.send(f"{await player.getName()} has {player.currentChips} chips! ({player.totalChips} across all periods)\Winrate is: {winrate[0]}/{winrate[1]}")
         else:
-            await ctx.respond(f"Please register!", ephemeral=True)
+            await ctx.respond(f"Player isn't registered!", ephemeral=True)
     except ValueError as e:
         await ctx.respond(str(e), ephemeral=True)
 
