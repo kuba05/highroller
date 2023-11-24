@@ -158,7 +158,7 @@ class Challenge:
         self.gameName: Optional[str] = gameName
         self.winner: Optional[int] = winner
     
-    async def toTextForMessages(self):
+    async def toTextForMessages(self) -> str:
         return f"Challenge {self.id} {await cast(Player, Player.getById(self.authorId)).getName()} vs {await cast(Player, Player.getById(self.acceptedBy)).getName() if self.acceptedBy else 'TBD'}"
         
     def __str__(self):
@@ -470,6 +470,33 @@ class MyBot(discord.Bot):
         
         return cast(Challenge, challenge)
     
+    def _getListOfAllChallenges(self, open: bool, inProgress: bool, done: bool, aborted: bool, withPlayer: Optional[Player]) -> list[Challenge]:
+        """
+        returns all challenges with given state.
+
+        if withPlayer is provided, it will filter out all challenges where the player is not present
+        """
+        allChallenges: list[Challenge] = []
+
+        if open:
+            allChallenges += Challenge.getAllChallengesByState(state=ChallengeState.CREATED)
+
+        if inProgress:
+            for state in [ChallengeState.ACCEPTED, ChallengeState.CONFIRMED, ChallengeState.STARTED]:
+                allChallenges += Challenge.getAllChallengesByState(state=state)
+
+        if done:
+            allChallenges += Challenge.getAllChallengesByState(state=ChallengeState.FINISHED)
+
+        if aborted:
+            allChallenges += Challenge.getAllChallengesByState(state=ChallengeState.ABORTED)
+
+        if withPlayer != None:
+            withPlayer = cast(Player, withPlayer)
+            allChallenges = [challenge for challenge in allChallenges if challenge.authorId == withPlayer.id or challenge.acceptedBy == withPlayer.id]
+
+        return allChallenges
+
     async def _accept_challenge(self, challenge: Challenge, player: Player) -> None:
         challenge.accept(player.id)
         await bot.messenger.acceptChallenge(challenge)
@@ -523,6 +550,40 @@ class MyBot(discord.Bot):
                 case "help":
                     await message.reply(HELPMESSAGE)
 
+
+                case "list":
+                    if len(args) < 1:
+                        raise ValueError("invalid number of arguments!")
+                    
+                    for arg in args:
+                        if arg not in ["all", "done", "open", "playing", "mine", "aborted"]:
+                            raise ValueError(f"invalid argument \"{arg}\"")
+                    
+                    done = False
+                    open = False
+                    current = False
+                    onlyMine = False
+                    aborted = False
+
+                    for arg in args:
+                        if arg in ["all", "done"]:
+                            done = True
+                        
+                        if arg in ["all", "open"]:
+                            open = True
+
+                        if arg in ["all", "playing"]:
+                            current = True
+
+                        if arg in ["mine"]:
+                            onlyMine = True
+
+                        if arg in ["aborted"]:
+                            aborted = True
+
+                    listOfAllChallenges = "\n\n".join([await challenge.toTextForMessages() for challenge in self._getListOfAllChallenges(done=done, open=open, inProgress=current, aborted=aborted, withPlayer=player if onlyMine else None)])
+                    await message.reply(listOfAllChallenges)
+                
 
                 case "create":
                     await message.reply("Please use the /create_command instead :)")
