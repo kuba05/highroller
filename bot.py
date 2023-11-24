@@ -763,6 +763,21 @@ async def help(ctx: discord.ApplicationContext):
     await ctx.respond("Success!")
     await ctx.channel.send(HELPMESSAGE)
 
+@bot.command(description="List all games")
+@discord.option("open", bool)
+@discord.option("in_progress", bool)
+@discord.option("finished", bool)
+@discord.option("aborted", bool)
+@discord.option("withPlayer", discord.User, default = None, required = False)
+async def list_games(ctx: discord.ApplicationContext, open: bool, in_progress: bool, finished: bool, aborted: bool, withPlayer: discord.User):
+    await ctx.respond("Success!", ephemeral=True)
+    if withPlayer != None:
+        withPlayerId = Player.getById(withPlayer.id)
+    else:
+        withPlayerId = None
+    
+    await ctx.channel.send(await bot._getListOfAllChallenges(open=open, inProgress=in_progress, done=finished, aborted=aborted, withPlayer=withPlayerId))
+
 @bot.command()
 async def shutdown(ctx: discord.ApplicationContext):
     if await bot.is_owner(ctx.user):
