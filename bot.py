@@ -159,7 +159,12 @@ class Challenge:
         self.winner: Optional[int] = winner
     
     async def toTextForMessages(self) -> str:
-        return f"Challenge {self.id} {await cast(Player, Player.getById(self.authorId)).getName()} vs {await cast(Player, Player.getById(self.acceptedBy)).getName() if self.acceptedBy else 'TBD'}"
+        stateMessage = ""
+        if self.state == ChallengeState.ABORTED:
+            stateMessage = " (aborted)"
+        if self.winner != None:
+            stateMessage = f" (winner: {await cast(Player, Player.getById(self.winner)).getName()})"
+        return f"Challenge {self.id} {await cast(Player, Player.getById(self.authorId)).getName()} vs {await cast(Player, Player.getById(self.acceptedBy)).getName() if self.acceptedBy else 'TBD'}" + stateMessage
         
     def __str__(self):
         return f"Challenge {self.id} by {self.authorId}. State {self.state}. Bet {self.bet}. Timeout: {datetime.datetime.fromtimestamp(self.timeout)} Notes:\"{self.notes}\""
