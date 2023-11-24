@@ -139,8 +139,9 @@ class Challenge:
     - getAllChallengesByState
     - getNewTimeouts
     """
-    def __init__(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: ChallengeState | int, timeout: Optional[int], map: str, tribe: str, notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
-        self.id: int = messageId
+    def __init__(self, id: int, messageId: Optional[int], bet: int, authorId: int, acceptedBy: Optional[int], state: ChallengeState | int, timeout: Optional[int], map: str, tribe: str, notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
+        self.id: int = id
+        self.messageId: Optional[int] = messageId
         self.bet: int = bet
         self.authorId: int = authorId
         self.acceptedBy: Optional[int] = acceptedBy
@@ -179,7 +180,7 @@ class Challenge:
             raise ValueError("You don't have enough chips")
 
         # let's use a proxy value of -1 for id
-        challenge = Challenge(messageId=-1, bet=bet, authorId=authorId, acceptedBy=None, state=ChallengeState.PRECREATED, timeout=int(time.time() + lastsForMinutes*60), map=map, tribe=tribe, notes=notes, gameName=None, winner=None)
+        challenge = Challenge(id = db.getNewIdForChallenge(), messageId=None, bet=bet, authorId=authorId, acceptedBy=None, state=ChallengeState.PRECREATED, timeout=int(time.time() + lastsForMinutes*60), map=map, tribe=tribe, notes=notes, gameName=None, winner=None)
         return challenge
 
     @staticmethod
@@ -187,7 +188,18 @@ class Challenge:
         """
         Returns challenge with given id from db, or None if there is no match.
         """
-        challengeData = db.getChallenge(id)
+        challengeData = db.getChallengeById(id)
+        if challengeData == None:
+            return None
+        else:
+            return Challenge(*challengeData)
+
+    @staticmethod
+    def getByMessageId(messageId: int) -> Optional[Challenge]:
+        """
+        Returns challenge with given messageId from db, or None if there is no match.
+        """
+        challengeData = db.getChallengeByMessageId(messageId)
         if challengeData == None:
             return None
         else:
@@ -207,15 +219,18 @@ class Challenge:
         """
         return [Challenge(*challenge) for challenge in db.getTimeoutedChallengesByStateAndTimeoutTime(ChallengeState.CREATED, int(time.time()))]
 
-    def finishCreating(self, messageId: int) -> None:
+    def finishCreating(self, messageId: int | None) -> None:
         if self.state != ChallengeState.PRECREATED:
             raise ValueError("can't create a challange that's already created!")
-        self.id = messageId
+        self.messageId = messageId
         self.state = ChallengeState.CREATED
         db.adjustPlayerChips(self.authorId, -self.bet)
-        db.createChallenge(messageId=self.id, bet=self.bet, authorId=self.authorId, acceptedBy=self.acceptedBy, state=self.state, timeout=self.timeout, map=self.map, tribe=self.tribe, notes=self.notes, gameName=self.gameName, winner=self.winner)
+        db.createChallenge(challangeId=self.id, messageId=self.messageId, bet=self.bet, authorId=self.authorId, acceptedBy=self.acceptedBy, state=self.state, timeout=self.timeout, map=self.map, tribe=self.tribe, notes=self.notes, gameName=self.gameName, winner=self.winner)
         
     def accept(self, playerId: int) -> None:
+        """
+        Make given player accept this challange
+        """
         if self.state != ChallengeState.CREATED:
             raise ValueError("Challenge has already been accepted!")
         
@@ -239,6 +254,9 @@ class Challenge:
         db.adjustPlayerChips(playerId, - self.bet)
 
     def confirm(self, playerId: int) -> None:
+        """
+        Make given player confirm this challange
+        """
         if playerId != self.authorId:
             raise ValueError("You can't confirm a game you're not hosting!")
         
@@ -249,6 +267,9 @@ class Challenge:
         self.state = ChallengeState.CONFIRMED
 
     def start(self, playerId: int, gameName: str) -> None:
+        """
+        Make given player start this challange with given name
+        """
         if playerId != self.authorId:
             raise ValueError("You can't start a game you're not hosting!")
         
@@ -262,6 +283,9 @@ class Challenge:
         self.state = ChallengeState.STARTED
 
     def claimVictory(self, winnerId: int) -> None:
+        """
+        Make given player claim the victory of this challange
+        """
         if winnerId not in [self.authorId, self.acceptedBy]:
             raise ValueError("You can't finish a game you're not part of!")
         
@@ -277,6 +301,11 @@ class Challenge:
         db.adjustPlayerChips(winnerId, self.bet*2)
 
     def abort(self, byPlayer: int) -> None:
+        """
+        Make given player abort this challange.
+
+        if byPlayer is None, the system is assumed to have aborted the challange
+        """
         if byPlayer not in [self.authorId, self.acceptedBy, None]:
             raise ValueError("You can't abort a game you're not part of!")
         
@@ -313,6 +342,10 @@ class Messenger:
         logging.debug(f"message channel: {messenger.messageChannel} (server: {messenger.messageChannel.guild})")
         return messenger
 
+    async def _DM (self, player: Player|None, message: str):
+        if player != None:
+            await cast(Player, player).DM(message=message)
+
     async def _sendAll(self, challenge: Challenge, message: str) -> None:
         """
         Send all players associated with given challange DMs with given message.
@@ -324,30 +357,36 @@ class Messenger:
         """
         Send the host of a given challange (if exists) a DM with given message.
         """
-        if Player.getById(challenge.authorId) != None:
-            await cast(Player, Player.getById(challenge.authorId)).DM(message)
+        await self._DM(player=Player.getById(challenge.authorId), message=message)
 
     async def _sendAway(self, challenge: Challenge, message: str) -> None:
         """
         Send the away player of a given challange (if exists) a DM with given message.
         """
-        if Player.getById(challenge.acceptedBy) != None:
-            await cast(Player, Player.getById(challenge.acceptedBy)).DM(message)
+        await self._DM(player=Player.getById(challenge.acceptedBy), message=message)
 
     async def _deleteChallengeMessage(self, challenge: Challenge) -> None:
-        message = await self.messageChannel.fetch_message(challenge.id)
-        self.messages.discard(challenge.id)
-        await message.delete()
+        if challenge.messageId:
+            message = await self.messageChannel.fetch_message(cast(int, challenge.messageId))
+            self.messages.discard(challenge.messageId)
+            await message.delete()
 
     async def loadAllChallengesAfterRestart(self) -> None:
         for challange in Challenge.getAllChallengesByState(state=ChallengeState.CREATED):
-            self.messages.add(challange.id)
+            if challange.messageId != None:
+                self.messages.add(cast(int,challange.messageId))
             logging.info("Loaded a challenge after restart!")
 
-    async def createChallengeEntry(self, challenge: Challenge) -> None:
-        logging.info(f"Created challenge: {str(challenge)}")
-        name = await Player.getById(challenge.authorId).getName() # type: ignore
-        message = await self.messageChannel.send(
+    async def createChallengeEntry(self, challenge: Challenge, private: bool) -> None:
+        """
+        Creates the message entry for given challange. Then finishes creating the challange.
+
+        if private is true, no message will be generated.
+        """
+        logging.info(f"Created challenge: {str(challenge)} (private: {private})")
+        if not private:
+            name = await Player.getById(challenge.authorId).getName() # type: ignore
+            message = await self.messageChannel.send(
 f"""
 ## ⚔️ {name} challanges you! ⚔️
 bet: {challenge.bet}
@@ -357,11 +396,18 @@ timelimit: Live game
 
 challange timeouts in <t:{challenge.timeout}:t>
 """
-        )
-        challenge.finishCreating(message.id)
-        self.messages.add(challenge.id)
-        await message.add_reaction(ABORT_EMOJI)
-        await message.add_reaction(ACCEPT_EMOJI)
+            )
+            await self._sendHost(challenge, f"{await challenge.toTextForMessages()} has been created")
+            self.messages.add(cast(int, message.id))
+            await message.add_reaction(ABORT_EMOJI)
+            await message.add_reaction(ACCEPT_EMOJI)
+            challenge.finishCreating(message.id)
+        else:
+            await self._sendHost(challenge, f"{await challenge.toTextForMessages()} has been created.")
+            await self._sendHost(challenge, f"The challange is private, so it won't show up in listings."\
+                "If you want someone to connect, they have to DM me the following command:\n"\
+                "accept {challenge.id}")
+            challenge.finishCreating(None)
     
     async def abortChallenge(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been aborted.")
@@ -403,6 +449,9 @@ challange timeouts in <t:{challenge.timeout}:t>
         logging.info("claimed {challenge.id}")
 
 
+    async def playerRegistered(self, playerId: int) -> None:
+        await self._DM(Player.getById(playerId), "You have registered to Highroller tournament! Good luck have fun :D")
+
 class MyBot(discord.Bot):
     async def on_ready(self: MyBot) -> None:
         print(f'Logged on as {self.user}!', file=sys.stderr)
@@ -420,7 +469,27 @@ class MyBot(discord.Bot):
             raise ValueError("I don't recognize this game!")
         
         return cast(Challenge, challenge)
-        
+    
+    async def _accept_challenge(self, challenge: Challenge, player: Player) -> None:
+        challenge.accept(player.id)
+        await bot.messenger.acceptChallenge(challenge)
+
+    async def _abort_challenge(self, challenge: Challenge, player: Player) -> None:
+        challenge.abort(player.id)
+        await bot.messenger.abortChallenge(challenge)
+
+    async def _confirm_challenge(self, challenge: Challenge, player: Player) -> None:
+        challenge.confirm(player.id)
+        await bot.messenger.confirmChallenge(challenge)
+
+    async def _start_challenge(self, challenge: Challenge, player: Player, name: str) -> None:
+        challenge.start(player.id, name)
+        await bot.messenger.startChallenge(challenge)
+
+    async def _claim_challenge(self, challenge: Challenge, player: Player) -> None:
+        challenge.claimVictory(player.id)
+        await bot.messenger.claimChallenge(challenge)
+
     async def on_message(self, message: discord.Message):
         # if it's not a DM, ignore it
         if not isinstance(message.channel, discord.DMChannel):
@@ -435,13 +504,13 @@ class MyBot(discord.Bot):
 
         # handle recieving a DM
         try:
-            user = Player.getById(message.author.id)
-            if user == None:
-                logging.info("user not recognized")
+            player = Player.getById(message.author.id)
+            if player == None:
+                logging.info("player not recognized")
                 raise ValueError("I don't recognize you! Please register using /register!")
             
             # just for typechecker
-            user = cast(Player, user)
+            player = cast(Player, player)
 
             args = message.content.strip().split(" ")
 
@@ -455,56 +524,44 @@ class MyBot(discord.Bot):
                     await message.reply(HELPMESSAGE)
 
 
-                # abort the challenge
+                case "create":
+                    await message.reply("Please use the /create_command instead :)")
+
+                
                 case "abort":
                     if len(args) != 2:
                         raise ValueError("invalid number of arguments!")
                     
-                    challenge = self._load_challenge(args[1])
-
-                    challenge.abort(user.id)
-                    await bot.messenger.abortChallenge(challenge)
+                    await self._abort_challenge(challenge=self._load_challenge(args[1]), player=player)
 
 
                 case "accept":
                     if len(args) != 2:
                         raise ValueError("invalid number of arguments!")
                     
-                    challenge = self._load_challenge(args[1])
-
-                    challenge.accept(user.id)
-                    await bot.messenger.acceptChallenge(challenge)
+                    await self._accept_challenge(challenge=self._load_challenge(args[1]), player = player)
 
 
                 case "confirm":
                     if len(args) != 2:
                         raise ValueError("invalid number of arguments!")
                     
-                    challenge = self._load_challenge(args[1])
-
-                    challenge.confirm(user.id)
-                    await bot.messenger.confirmChallenge(challenge)
+                    await self._confirm_challenge(challenge=self._load_challenge(args[1]), player = player)
 
 
                 case "start":
-                    if len(args) > 2:
+                    if len(args) <= 2:
                         raise ValueError("invalid number of arguments!")
                     
-                    challenge = self._load_challenge(args[1])
-
                     # game name can have multiple words, so we will do a bit of hacking :D
-                    challenge.start(user.id, " ".join(args[2:]))
-                    await bot.messenger.startChallenge(challenge)
+                    await self._start_challenge(challenge=self._load_challenge(args[1]), player = player, name=" ".join(args[2:]))
 
 
                 case "win":
                     if len(args) != 2:
                         raise ValueError("invalid number of arguments!")
                     
-                    challenge = self._load_challenge(args[1])
-
-                    challenge.claimVictory(user.id)
-                    await bot.messenger.claimChallenge(challenge)
+                    await self._claim_challenge(challenge=self._load_challenge(args[1]), player = player)
 
 
                 case _:
@@ -524,19 +581,26 @@ class MyBot(discord.Bot):
             logging.debug("my emoji!")
             return
         
-        challenge = cast(Challenge, Challenge.getById(payload.message_id))
-
-        logging.info(f"recieved emoji {payload.emoji}")
-        logging.debug("Challange state {challenge.state}")
+        # reaction is valid
         try:
+            player = Player.getById(payload.user_id)
+            if player == None:
+                raise ValueError("Player not registered!")
+            player = cast(Player, player)
+
+            challenge = cast(Challenge, Challenge.getByMessageId(payload.message_id))
+
+            logging.info(f"recieved emoji {payload.emoji}")
+            logging.debug("Challange state {challenge.state}")
+
             if str(payload.emoji) == ACCEPT_EMOJI:
                 logging.info("accepted reaction")
-                challenge.accept(payload.user_id)
-                await bot.messenger.acceptChallenge(challenge)
+                await self._accept_challenge(challenge=challenge, player=player)
+
             elif str(payload.emoji) == ABORT_EMOJI:
                 logging.info("aborted reaction")
-                challenge.abort(payload.user_id)
-                await bot.messenger.abortChallenge(challenge)
+                await self._abort_challenge(challenge=challenge, player=player)
+
             else:
                 message = self.get_message(payload.message_id)
                 if message != None:
@@ -565,14 +629,15 @@ bot = MyBot()
 
 @bot.command(description="Create a new challenge for the Highroller tournament!")
 @discord.option("bet", int, min_value = 1)
-@discord.option("map", str, choices=MAP_OPTIONS)
-@discord.option("tribe", str, choices=TRIBE_OPTIONS)
-@discord.option("timeout", int, required=False, min_value = 1, default = 60, description="Number of minutes before this challange will automatically abort. (default is 60)")
-async def create_challenge(ctx: discord.ApplicationContext, bet, map, tribe, timeout):
+@discord.option("map", str, choices = MAP_OPTIONS)
+@discord.option("tribe", str, choices = TRIBE_OPTIONS)
+@discord.option("timeout", int, required = False, min_value = 1, default = 60*12, description="Number of minutes before this challange will automatically abort. (default is 12*60)")
+@discord.option("private", bool, required = False, default = False)
+async def create_challenge(ctx: discord.ApplicationContext, bet, map, tribe, timeout, private):
     # you can use them as they were actual integers
     try:
         challenge = Challenge.precreate(bet = int(bet), authorId=ctx.author.id, map=map, tribe=tribe, lastsForMinutes=timeout)
-        await bot.messenger.createChallengeEntry(challenge)
+        await bot.messenger.createChallengeEntry(challenge=challenge, private=private)
         await ctx.respond("Success!", ephemeral=True)
     except ValueError as e:
         await ctx.respond(str(e), ephemeral=True)
@@ -581,6 +646,7 @@ async def create_challenge(ctx: discord.ApplicationContext, bet, map, tribe, tim
 async def register(ctx: discord.ApplicationContext):
     try:
         Player.create(ctx.author.id)
+        await bot.messenger.playerRegistered(ctx.author.id)
         await ctx.respond("Success!", ephemeral=True)
     except ValueError as e:
         await ctx.respond(str(e), ephemeral=True)
@@ -636,7 +702,7 @@ async def shutdown(ctx: discord.ApplicationContext):
     if await bot.is_owner(ctx.user):
         await ctx.respond("Exiting")
         print("exiting")
-        exit()
+        sys.exit()
     await ctx.respond("No Permissions")
 
 bot.run(TOKEN)

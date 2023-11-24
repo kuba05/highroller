@@ -17,7 +17,8 @@ class Database:
         BEGIN;
         CREATE TABLE IF NOT EXISTS "challenges"
         (
-            [messageId] INTEGER PRIMARY KEY NOT NULL,
+            [id] INTEGER PRIMARY KEY NOT NULL,
+            [messageId] INTEGER UNIQUE,
             [bet] INTEGER CHECK (bet > 0),
             [authorId] INTEGER NOT NULL,
             [acceptedBy] INTEGER,
@@ -44,23 +45,26 @@ class Database:
         COMMIT;
         """)
 
-    def createChallenge(self, messageId: int, bet: int, authorId: int, acceptedBy: Optional[int], state: Enum, timeout: Optional[int], map: str, tribe: str, notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
-        logging.info(f"creating challenge with params: {messageId}, {bet}, {authorId}, {acceptedBy}, {state}, {timeout}, {notes}, {gameName}, {winner}")
+    def createChallenge(self, challangeId: int, messageId: Optional[int], bet: int, authorId: int, acceptedBy: Optional[int], state: Enum, timeout: Optional[int], map: str, tribe: str, notes: str, gameName: Optional[str], winner: Optional[int]) -> None:
+        logging.info(f"creating challenge with params: {challangeId}, {messageId}, {bet}, {authorId}, {acceptedBy}, {state}, {timeout}, {notes}, {gameName}, {winner}")
         try:
-            self.con.execute('INSERT INTO challenges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);', (messageId, bet, authorId, acceptedBy, state.value, timeout, map, tribe, notes, gameName, winner))
+            self.con.execute('INSERT INTO challenges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);', (challangeId, messageId, bet, authorId, acceptedBy, state.value, timeout, map, tribe, notes, gameName, winner))
             self.con.commit()
 
         except Exception as e:
-            logging.error(f"Error creating challange {messageId}")
+            logging.error(f"Error creating challange {challangeId}")
             logging.error(str(e))
             self.con.rollback()
 
-    def getChallenge(self, challengeId) -> list[Any]:
-        return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (challengeId,)).fetchone()
+    def getChallengeById(self, challengeId) -> list[Any]:
+        return self.con.execute('SELECT * FROM challenges WHERE id = ?;', (challengeId,)).fetchone()
+    
+    def getChallengeByMessageId(self, messageId) -> list[Any]:
+        return self.con.execute('SELECT * FROM challenges WHERE messageId = ?;', (messageId,)).fetchone()
     
     def setChallengeState(self, challengeId: int, challengeState: Enum) -> None:
         try:
-            self.con.execute('UPDATE challenges SET state = ? WHERE messageId = ?', (challengeState.value, challengeId))
+            self.con.execute('UPDATE challenges SET state = ? WHERE id = ?', (challengeState.value, challengeId))
             self.con.commit()
 
         except Exception as e:
@@ -70,7 +74,7 @@ class Database:
 
     def setChallengeAcceptedBy(self, challengeId: int, acceptedBy: int) -> None:
         try:
-            self.con.execute('UPDATE challenges SET acceptedBy = ? WHERE messageId = ?', (acceptedBy, challengeId))
+            self.con.execute('UPDATE challenges SET acceptedBy = ? WHERE id = ?', (acceptedBy, challengeId))
             self.con.commit()
         except Exception as e:
             logging.error(f"Error accepting a challange {challengeId}")
@@ -79,7 +83,7 @@ class Database:
 
     def setChallengeName(self, challengeId: int, name: str) -> None:
         try:
-            self.con.execute('UPDATE challenges SET gameName = ? WHERE messageId = ?', (name, challengeId))
+            self.con.execute('UPDATE challenges SET gameName = ? WHERE id = ?', (name, challengeId))
             self.con.commit()
         except Exception as e:
             logging.error(f"Error setting name of a challange {challengeId}")
@@ -88,12 +92,30 @@ class Database:
     
     def setChallengeWinner(self, challengeId: int, winnerId: int) -> None:
         try:
-            self.con.execute('UPDATE challenges SET winner = ? WHERE messageId = ?', (winnerId, challengeId))
+            self.con.execute('UPDATE challenges SET winner = ? WHERE id = ?', (winnerId, challengeId))
             self.con.commit()
         except Exception as e:
             logging.error(f"Error setting winner of a challange {challengeId}")
             logging.error(str(e))
             self.con.rollback()
+
+    def getNewIdForChallenge(self) -> int:
+        while True:
+            newId = int.from_bytes(os.urandom(7))
+
+            # id is not yet used
+            if self.getChallengeById(newId) == None:
+                return newId
+
+    def getChallengesByState(self, state: Enum) -> list[list[Any]]:
+        return self.con.execute('SELECT * FROM challenges WHERE state = ?', (state.value, )).fetchall()
+
+    def getTimeoutedChallengesByStateAndTimeoutTime(self, state: Enum, timeoutTime: int) -> list[list[Any]]:
+        return self.con.execute('SELECT * FROM challenges WHERE state = ? AND timeout <= ?', (state.value, timeoutTime)).fetchall()
+
+
+
+
 
 
     def createPlayer(self, playerId, currentChips, totalChips, abortedGames) -> None:
@@ -141,14 +163,6 @@ class Database:
 
 
 
-
-
-
-    def getChallengesByState(self, state: Enum) -> list[list[Any]]:
-        return self.con.execute('SELECT * FROM challenges WHERE state = ?', (state.value, )).fetchall()
-
-    def getTimeoutedChallengesByStateAndTimeoutTime(self, state: Enum, timeoutTime: int) -> list[list[Any]]:
-        return self.con.execute('SELECT * FROM challenges WHERE state = ? AND timeout <= ?', (state.value, timeoutTime)).fetchall()
 
             
 
