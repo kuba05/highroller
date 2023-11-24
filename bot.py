@@ -52,7 +52,6 @@ class ChallengeState(Enum):
     PRECREATED = 0
     CREATED = 1
     ACCEPTED = 2
-    CONFIRMED = 3
     STARTED = 4
     FINISHED = 5
     ABORTED = 7
@@ -258,19 +257,6 @@ class Challenge:
 
         db.adjustPlayerChips(playerId, - self.bet)
 
-    def confirm(self, playerId: int) -> None:
-        """
-        Make given player confirm this challange
-        """
-        if playerId != self.authorId:
-            raise ValueError("You can't confirm a game you're not hosting!")
-        
-        if self.state != ChallengeState.ACCEPTED:
-            raise ValueError("The game is not waiting for confirmation!")
-        
-        db.setChallengeState(self.id, ChallengeState.CONFIRMED)
-        self.state = ChallengeState.CONFIRMED
-
     def start(self, playerId: int, gameName: str) -> None:
         """
         Make given player start this challange with given name
@@ -278,7 +264,7 @@ class Challenge:
         if playerId != self.authorId:
             raise ValueError("You can't start a game you're not hosting!")
         
-        if self.state != ChallengeState.CONFIRMED:
+        if self.state != ChallengeState.ACCEPTED:
             raise ValueError("The game can't be started!")
         
         db.setChallengeName(self.id, gameName)
@@ -440,12 +426,6 @@ challange timeouts in <t:{challenge.timeout}:t>
 
         logging.info(f"challenge accepted {challenge.id}")
 
-    async def confirmChallenge(self, challenge: Challenge) -> None:
-        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} is ready to start!")
-        await self._sendAll(challenge, "Waiting for the host to start it!")
-        await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\nstart {challenge.id} [gameName]")
-        logging.info(f"challenge confirmed {challenge.id}")
-
     async def startChallenge(self, challenge: Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been started! \nThe game name is {challenge.gameName}\n\nGLHF!")
         await self._sendAll(challenge, f"Once the game is over, the winner should send me the following command:\nwin {challenge.id} ")
@@ -493,7 +473,7 @@ class MyBot(discord.Bot):
             allChallenges += Challenge.getAllChallengesByState(state=ChallengeState.CREATED)
 
         if inProgress:
-            for state in [ChallengeState.ACCEPTED, ChallengeState.CONFIRMED, ChallengeState.STARTED]:
+            for state in [ChallengeState.ACCEPTED, ChallengeState.STARTED]:
                 allChallenges += Challenge.getAllChallengesByState(state=state)
 
         if done:
@@ -516,10 +496,6 @@ class MyBot(discord.Bot):
     async def _abort_challenge(self, challenge: Challenge, player: Player, force: bool) -> None:
         challenge.abort(player.id, force)
         await bot.messenger.abortChallenge(challenge)
-
-    async def _confirm_challenge(self, challenge: Challenge, player: Player) -> None:
-        challenge.confirm(player.id)
-        await bot.messenger.confirmChallenge(challenge)
 
     async def _start_challenge(self, challenge: Challenge, player: Player, name: str) -> None:
         challenge.start(player.id, name)
@@ -614,13 +590,6 @@ class MyBot(discord.Bot):
                         raise ValueError("invalid number of arguments!")
                     
                     await self._accept_challenge(challenge=self._load_challenge(args[1]), player = player)
-
-
-                case "confirm":
-                    if len(args) != 2:
-                        raise ValueError("invalid number of arguments!")
-                    
-                    await self._confirm_challenge(challenge=self._load_challenge(args[1]), player = player)
 
 
                 case "start":
