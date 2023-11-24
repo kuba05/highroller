@@ -15,7 +15,7 @@ import logging
 from db import Database
 
 
-logging.basicConfig(filename="highroller.log", encoding="utf-8", level=logging.DEBUG, format='%(levelname)s:%(asctime)s:%(message)s', datefmt='%Y-%m-%d-%H-%M-%S')
+logging.basicConfig(filename="highroller.log", encoding="utf-8", level=logging.INFO, format='%(levelname)s:%(asctime)s:%(message)s', datefmt='%Y-%m-%d-%H-%M-%S')
 
 STARTING_CHIPS=10
 SIZES = ["small", "normal", "large", "huge"]
