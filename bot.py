@@ -282,14 +282,14 @@ class Challenge:
         db.setChallengeState(self.id, ChallengeState.STARTED)
         self.state = ChallengeState.STARTED
 
-    def claimVictory(self, winnerId: int) -> None:
+    def claimVictory(self, winnerId: int, force: bool) -> None:
         """
         Make given player claim the victory of this challange
         """
         if winnerId not in [self.authorId, self.acceptedBy]:
             raise ValueError("You can't finish a game you're not part of!")
         
-        if self.state != ChallengeState.STARTED:
+        if force or self.state != ChallengeState.STARTED:
             raise ValueError("The game can't be finished!")
         
         db.setChallengeState(self.id, ChallengeState.FINISHED)
@@ -300,22 +300,24 @@ class Challenge:
 
         db.adjustPlayerChips(winnerId, self.bet*2)
 
-    def abort(self, byPlayer: int) -> None:
+    def abort(self, byPlayer: int, force: bool) -> None:
         """
         Make given player abort this challange.
 
         if byPlayer is None, the system is assumed to have aborted the challange
+
+        if force is true, it won't be checked if player is correct
         """
-        if byPlayer not in [self.authorId, self.acceptedBy, None]:
+        if force or byPlayer not in [self.authorId, self.acceptedBy, None]:
             raise ValueError("You can't abort a game you're not part of!")
         
-        if self.state not in [ChallengeState.CREATED, ChallengeState.ACCEPTED]:
+        if force or self.state not in [ChallengeState.CREATED, ChallengeState.ACCEPTED]:
             raise ValueError("Can't abort game that has already been started!")
         
         db.setChallengeState(self.id, ChallengeState.ABORTED)
         db.adjustPlayerChips(self.authorId, self.bet)
 
-        if self.state == ChallengeState.ACCEPTED:
+        if self.acceptedBy != None:
             db.adjustPlayerChips(cast(int, self.acceptedBy), self.bet)
             db.increasePlayerAbortedCounter(byPlayer)
 
@@ -470,9 +472,13 @@ class MyBot(discord.Bot):
         
         return cast(Challenge, challenge)
     
+    def _checkIsAdmin(self, user: discord.User | discord.Member) -> bool:
+        # FIXME
+        return False
+
     async def _getListOfAllChallenges(self, open: bool, inProgress: bool, done: bool, aborted: bool, withPlayer: Optional[Player]) -> str:
         """
-        returns all challenges with given state.
+        returns string representing all challenges with given state.
 
         if withPlayer is provided, it will filter out all challenges where the player is not present
         """
@@ -495,14 +501,15 @@ class MyBot(discord.Bot):
             withPlayer = cast(Player, withPlayer)
             allChallenges = [challenge for challenge in allChallenges if challenge.authorId == withPlayer.id or challenge.acceptedBy == withPlayer.id]
         
+        print(withPlayer)
         return "\n\n".join([await challenge.toTextForMessages() for challenge in allChallenges])
 
     async def _accept_challenge(self, challenge: Challenge, player: Player) -> None:
         challenge.accept(player.id)
         await bot.messenger.acceptChallenge(challenge)
 
-    async def _abort_challenge(self, challenge: Challenge, player: Player) -> None:
-        challenge.abort(player.id)
+    async def _abort_challenge(self, challenge: Challenge, player: Player, force: bool) -> None:
+        challenge.abort(player.id, force)
         await bot.messenger.abortChallenge(challenge)
 
     async def _confirm_challenge(self, challenge: Challenge, player: Player) -> None:
@@ -513,8 +520,8 @@ class MyBot(discord.Bot):
         challenge.start(player.id, name)
         await bot.messenger.startChallenge(challenge)
 
-    async def _claim_challenge(self, challenge: Challenge, player: Player) -> None:
-        challenge.claimVictory(player.id)
+    async def _claim_challenge(self, challenge: Challenge, player: Player, force: bool) -> None:
+        challenge.claimVictory(player.id, force)
         await bot.messenger.claimChallenge(challenge)
 
     async def on_message(self, message: discord.Message):
@@ -546,16 +553,17 @@ class MyBot(discord.Bot):
                 logging.info("no args recieved")
                 raise ValueError("invalid number of arguments!")
 
+            # match commands
             match args[0]:
                 case "help":
                     await message.reply(HELPMESSAGE)
 
 
                 case "list":
-                    if len(args) < 1:
+                    if len(args) < 2:
                         raise ValueError("invalid number of arguments!")
                     
-                    for arg in args:
+                    for arg in args[1:]:
                         if arg not in ["all", "done", "open", "playing", "mine", "aborted"]:
                             raise ValueError(f"invalid argument \"{arg}\"")
                     
@@ -593,7 +601,7 @@ class MyBot(discord.Bot):
                     if len(args) != 2:
                         raise ValueError("invalid number of arguments!")
                     
-                    await self._abort_challenge(challenge=self._load_challenge(args[1]), player=player)
+                    await self._abort_challenge(challenge=self._load_challenge(args[1]), player=player, force=False)
 
 
                 case "accept":
@@ -622,9 +630,34 @@ class MyBot(discord.Bot):
                     if len(args) != 2:
                         raise ValueError("invalid number of arguments!")
                     
-                    await self._claim_challenge(challenge=self._load_challenge(args[1]), player = player)
+                    await self._claim_challenge(challenge=self._load_challenge(args[1]), player = player, force=False)
 
 
+                case "forceabort":
+                    if not self._checkIsAdmin(message.author):
+                        raise ValueError("You don't have rights to do this!")
+                    
+                    if len(args) != 2:
+                        raise ValueError("invalid number of arguments!")
+                    
+                    challenge = self._load_challenge(args[1])
+
+                    # if someone has already won before, we need to take away his win
+                    if challenge.winner != None:
+                        cast(Player, Player.getById(challenge.winner)).adjustChips(-2*challenge.bet)
+
+                    await self._claim_challenge(challenge=challenge, player = player, force=True)
+                
+                
+                case "forcewin":
+                    if not self._checkIsAdmin(message.author):
+                        raise ValueError("You don't have rights to do this!")
+                    
+                    if len(args) != 2:
+                        raise ValueError("invalid number of arguments!")
+                    
+                    await self._abort_challenge(challenge=self._load_challenge(args[1]), player=player, force=True)
+                    
                 case _:
                     raise ValueError("unknown command. Try \"help\" command.")
 
@@ -660,7 +693,7 @@ class MyBot(discord.Bot):
 
             elif str(payload.emoji) == ABORT_EMOJI:
                 logging.info("aborted reaction")
-                await self._abort_challenge(challenge=challenge, player=player)
+                await self._abort_challenge(challenge=challenge, player=player, force=False)
 
             else:
                 message = self.get_message(payload.message_id)
@@ -768,11 +801,11 @@ async def help(ctx: discord.ApplicationContext):
 @discord.option("in_progress", bool)
 @discord.option("finished", bool)
 @discord.option("aborted", bool)
-@discord.option("withPlayer", discord.User, default = None, required = False)
-async def list_games(ctx: discord.ApplicationContext, open: bool, in_progress: bool, finished: bool, aborted: bool, withPlayer: discord.User):
+@discord.option("with_player", discord.User, default = None, required = False)
+async def list_games(ctx: discord.ApplicationContext, open: bool, in_progress: bool, finished: bool, aborted: bool, with_player: discord.User):
     await ctx.respond("Success!", ephemeral=True)
-    if withPlayer != None:
-        withPlayerId = Player.getById(withPlayer.id)
+    if with_player != None:
+        withPlayerId = Player.getById(with_player.id)
     else:
         withPlayerId = None
     
