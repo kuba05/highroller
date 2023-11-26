@@ -164,6 +164,10 @@ async def leaderboards(ctx: discord.ApplicationContext):
 async def help(ctx: discord.ApplicationContext):
     await bot.commandEvaluator.parseCommand("help", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
     
+@bot.command(description="Checkout game's details!")
+@discord.option("gameid", int, description = "Id of the game you're interested in.", required = True)
+async def gameinfo(ctx: discord.ApplicationContext, gameid: int):
+    await bot.commandEvaluator.parseCommand(f"gameinfo {gameid}", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
 
 @bot.command(description="List all games")
 @discord.option("open", bool)

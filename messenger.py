@@ -120,9 +120,9 @@ challange timeouts in <t:{challenge.timeout}:t>
     async def acceptChallenge(self, challenge: challengeModule.Challenge) -> None:
         await self._deleteChallengeMessage(challenge)
         await self._sendAway(challenge, f"{await challenge.toTextForMessages()} has been accepted.\n"\
-            "Waiting for host to confirm he's ready")
+            "Waiting for host to start the game")
         await self._sendHost(challenge, f"{await challenge.toTextForMessages()} has been accepted.\n"\
-            f"Please confirm you are ready by sending me the following command:\nconfirm {challenge.id}")
+            f"Please start the game by sending me the following command:\nstart {challenge.id} [gamename]")
 
         logging.info(f"challenge accepted {challenge.id}")
 
