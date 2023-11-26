@@ -95,23 +95,23 @@ challange timeouts in <t:{challenge.timeout}:t>
             await message.add_reaction(ACCEPT_EMOJI)
             challenge.finishCreating(message.id)
         else:
-            await self._sendHost(challenge, f"{await challenge.toTextForMessages()} has been created.")
-            await self._sendHost(challenge, f"The challange is private, so it won't show up in listings."\
+            await self._sendHost(challenge, f"{await challenge.toTextForMessages()} has been created.\n"\
+                "The challange is private, so it won't show up in listings."\
                 "If you want someone to connect, they have to DM me the following command:\n"\
                 "accept {challenge.id}")
             challenge.finishCreating(None)
     
     async def abortChallenge(self, challenge: challengeModule.Challenge) -> None:
-        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been aborted.")
-        await self._sendAll(challenge, "If you wish to create another one, use the /create_challenge command!")
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been aborted.\n"\
+            "If you wish to create another one, use the /create_challenge command!")
 
         await self._deleteChallengeMessage(challenge)
 
         logging.info(f"challenge aborted {challenge.id}")
 
     async def abortChallengeDueTimeout(self, challenge: challengeModule.Challenge) -> None:
-        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been aborted due timeout.")
-        await self._sendAll(challenge, "If you wish to create another one, use the /create_challenge command!")
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been aborted due timeout.\n"\
+            "If you wish to create another one, use the /create_challenge command!")
 
         await self._deleteChallengeMessage(challenge)
 
@@ -119,15 +119,16 @@ challange timeouts in <t:{challenge.timeout}:t>
 
     async def acceptChallenge(self, challenge: challengeModule.Challenge) -> None:
         await self._deleteChallengeMessage(challenge)
-        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been accepted.")
-        await self._sendAll(challenge, "Waiting for host to confirm he's ready")
-        await self._sendHost(challenge, f"Please confirm you are ready by sending me the following command:\nconfirm {challenge.id}")
+        await self._sendAway(challenge, f"{await challenge.toTextForMessages()} has been accepted.\n"\
+            "Waiting for host to confirm he's ready")
+        await self._sendHost(challenge, f"{await challenge.toTextForMessages()} has been accepted.\n"\
+            f"Please confirm you are ready by sending me the following command:\nconfirm {challenge.id}")
 
         logging.info(f"challenge accepted {challenge.id}")
 
     async def startChallenge(self, challenge: challengeModule.Challenge) -> None:
-        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been started! \nThe game name is {challenge.gameName}\n\nGLHF!")
-        await self._sendAll(challenge, f"Once the game is over, the winner should send me the following command:\nwin {challenge.id} ")
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been started! \nThe game name is {challenge.gameName}\n\nGLHF!"\
+            f"Once the game is over, the winner should send me the following command:\nwin {challenge.id} ")
         logging.info("started {challenge.id}")
 
     async def claimChallenge(self, challenge: challengeModule.Challenge) -> None:

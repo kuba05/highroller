@@ -96,7 +96,7 @@ class MyBot(discord.Bot):
             command = f"abort {challenge.id}"
         
         # either command wasn't set or the command isn't working
-        if not (command != None and await self.commandEvaluator.parseCommand(command, payload.member, source="reaction")):
+        if not (command != None and await self.commandEvaluator.parseCommand(cast(str,command), payload.member, source="reaction")):
             message = self.get_message(payload.message_id)
 
             # remove the message
