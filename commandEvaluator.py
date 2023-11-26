@@ -11,13 +11,13 @@ from challenge import Challenge
 from player import Player
 from commandDecorators import ensureAdmin, ensureRegistered, replyFunction, ensureNumberOfArgumentsIsAtLeast, ensureNumberOfArgumentsIsAtMost, ensureNumberOfArgumentsIsExactly
 from constants import HELPMESSAGE, ChallengeState
-
+import myTypes
 
 async def emptyReply(message: str):
     pass
 
 class CommandEvaluator:
-    def __init__(self, messenger: Messenger, bot: discord.Bot):
+    def __init__(self, messenger: Messenger, bot: myTypes.botWithGuild):
         self.messenger = messenger
         self.bot = bot
 
@@ -25,9 +25,16 @@ class CommandEvaluator:
         """
         parse a command and return if the command is valid
         """
-        print("called command")
-        print(message)
-        author: Optional[discord.Member] = await self.bot.guild.fetch_member(rawAuthor.id) if rawAuthor != None else None # type: ignore
+
+        author: Optional[discord.Member]
+        if rawAuthor == None:
+            author = None
+        else:
+            rawAuthor = cast(discord.User | discord.Member, rawAuthor)
+            # fetching is potentially costly, so we don't want to fetch when not needed
+            author =  self.bot.guild.get_member(rawAuthor.id)
+            if author == None:
+                author =  await self.bot.guild.fetch_member(rawAuthor.id)
 
         try:
             args = message.strip().split(" ")
@@ -41,6 +48,9 @@ class CommandEvaluator:
             return False
 
     async def evaluateCommand(self, args: list[str], author: discord.Member | None, reply: replyFunction = emptyReply) -> None:
+
+        print("evaluating command")
+        print(args)
 
         if author == None:
             raise ValueError("You are not a member of our guild!")
@@ -220,7 +230,15 @@ class CommandEvaluator:
     @ensureNumberOfArgumentsIsAtMost(1)
     async def command_userinfo(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         if len(args) == 1:
-            player = Player.getById(self.parseId(args[0]))
+            # it's number
+            if args[0].isdecimal():
+                player = Player.getById(self.parseId(args[0]))
+            
+            # it's player name
+            else:
+                member = self.bot.guild.get_member_named(args[0])
+                print(member)
+                player = Player.getById(cast(discord.Member, member).id) if member != None else None
         else:
             player = Player.getById(author.id)
 

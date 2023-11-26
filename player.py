@@ -5,7 +5,7 @@ import discord
 
 from constants import ChallengeState, STARTING_CHIPS
 from db import Database
-
+import myTypes
 
 class Player:
     """
@@ -18,7 +18,7 @@ class Player:
     - getTopPlayersAllTime
     """
 
-    bot: Optional[discord.Bot] = None
+    bot: Optional[myTypes.botWithGuild] = None
     db: Optional[Database] = None
 
     def __init__(self, playerId: int, currentChips: int, totalChips: int, abortedGames: int):
@@ -57,19 +57,19 @@ class Player:
     """
 
     @classmethod
-    def setBot(cls: Type[Self], bot: discord.Bot) -> None:
+    def setBot(cls: Type[Self], bot: myTypes.botWithGuild) -> None:
         """
         set database for all Challenges to use
         """
         cls.bot = bot
 
     @classmethod
-    def getBot(cls: Type[Self]) -> discord.Bot:
+    def getBot(cls: Type[Self]) -> myTypes.botWithGuild:
         """
         return the database all Challenges are using
         """
         if cls.bot != None:
-            return cast(discord.Bot, cls.bot)
+            return cast(myTypes.botWithGuild, cls.bot)
         raise EnvironmentError(f"Bot of {cls} not set!")
 
 

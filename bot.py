@@ -19,12 +19,13 @@ from constants import ChallengeState, HELPMESSAGE, MAP_OPTIONS, TRIBE_OPTIONS, G
 import challenge as challengeModule
 import player as playerModule
 import messenger as messengerModule
+import myTypes
+
+
 logging.basicConfig(filename="highroller.log", encoding="utf-8", level=logging.INFO, format='%(levelname)s:%(asctime)s:%(message)s', datefmt='%Y-%m-%d-%H-%M-%S')
 
-
 load_dotenv()
-intents = discord.Intents.default()
-intents.message_content = True
+intents = discord.Intents.all()
 
 db = Database('db.db')
 
@@ -37,7 +38,7 @@ spamChannelId = int(os.getenv('SPAM')) # type: ignore
 
 
 
-class MyBot(discord.Bot):
+class MyBot(myTypes.botWithGuild):
     async def on_ready(self: MyBot) -> None:
         print(f'Logged on as {self.user}!', file=sys.stderr)
         print(f'guilds: {self.guilds}', file=sys.stderr)
@@ -117,7 +118,7 @@ class MyBot(discord.Bot):
                 logging.warning(e)
 
 
-bot = MyBot()
+bot = MyBot(intents=intents)
 
 """
 SLASH COMMANDS
