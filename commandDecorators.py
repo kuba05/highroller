@@ -67,16 +67,6 @@ def __updateDocsForFunc(func: CommandFunction) -> None:
     if __getName(func) not in __rawDocsOfCommands:
         return
 
-    minArgumentText = f"{__argumentsOfCommands[__getName(func)][0]} argument{'s' if __argumentsOfCommands[__getName(func)][0] != 1 else ''}"
-    maxArgumentText = f"{__argumentsOfCommands[__getName(func)][1]} argument{'s' if __argumentsOfCommands[__getName(func)][1] != 1 else ''}"
-
-    func.__doc__ = f"""command '{__getName(func)}'
-    takes {minArgumentText if __argumentsOfCommands[__getName(func)][0] == __argumentsOfCommands[__getName(func)][1] else f'from {minArgumentText} to {maxArgumentText}'}
-    {f'''Arguments are:
-    {__argumentNamesOfCommands[__getName(func)]}
-    ''' if __getName(func) in __argumentNamesOfCommands else ""}{f'You must be **{__requiredAccessOfCommands[__getName(func)]}** to use this command.' if __getName(func) in __requiredAccessOfCommands else "**Anyone** can use this command."}
-    {f'{__rawDocsOfCommands[__getName(func)]}'}"""
-
     func.__doc__ = f"{__getName(func)} " \
         f"{__argumentNamesOfCommands[__getName(func)] if __getName(func) in __argumentNamesOfCommands else ''} - {__rawDocsOfCommands[__getName(func)]} " \
         f"{f'(you must be **{__requiredAccessOfCommands[__getName(func)]}**) 'if __getName(func) in __requiredAccessOfCommands else ''}"
@@ -105,7 +95,6 @@ def autocompleteDocs(func: CommandFunction) -> CommandFunction:
     adds information about arguments, access restrictions and command name to it's docstring
     """
     # remove leading whitespaces from all lines and adds one tab in front of each
-    #__rawDocsOfCommands[__getName(func)] = "\n".join("\t" + line.lstrip() for line in cast(str, func.__doc__).split('\n')) if  func.__doc__ else ""
     __rawDocsOfCommands[__getName(func)] = " ".join(line.strip() for line in cast(str, func.__doc__).split('\n')) if  func.__doc__ else ""
     __updateDocsForFunc(func)
 
@@ -114,7 +103,6 @@ def autocompleteDocs(func: CommandFunction) -> CommandFunction:
 def setArgumentNames(*args: str, **kwargs: str):
     def decorator(func):
         __argumentNamesOfCommands[__getName(func)] = " ".join([f'[{name}]' for name in args] + [f'[{name}] (default: {kwargs[name]})' for name in kwargs])
-        #__argumentNamesOfCommands[__getName(func)] = ", ".join([f'**{name}**' for name in args] + [f'**{name}** (default: {kwargs[name]})' for name in kwargs])
 
         __updateRegisteredCommand(func)
         __updateDocsForFunc(func)
