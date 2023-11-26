@@ -37,6 +37,12 @@ def getHelpOfAllCommands() -> str:
     """
     return help message for all registered commands
     """
+    messages = {}
+    for value in set(__requiredAccessOfCommands.values()):
+        messages[value] = "\n".join([cast(str, command.__doc__) for name, command in __registeredCommands.items() if __requiredAccessOfCommands[name] == value])
+
+    return "\n\n".join([f"## Commands for {value}\n{messages[value]}" for value in messages])
+        
     return "\n".join([cast(str, command.__doc__) for command in __registeredCommands.values() if command.__doc__ != None])
 
 
@@ -68,8 +74,7 @@ def __updateDocsForFunc(func: CommandFunction) -> None:
         return
 
     func.__doc__ = f"{__getName(func)} " \
-        f"{__argumentNamesOfCommands[__getName(func)] if __getName(func) in __argumentNamesOfCommands else ''} - {__rawDocsOfCommands[__getName(func)]} " \
-        f"{f'(you must be **{__requiredAccessOfCommands[__getName(func)]}**) 'if __getName(func) in __requiredAccessOfCommands else ''}"
+        f"{__argumentNamesOfCommands[__getName(func)] if __getName(func) in __argumentNamesOfCommands else ''} -{__rawDocsOfCommands[__getName(func)]} " 
     
 def __updateRegisteredCommand(func: CommandFunction) -> None:
     if __getName(func) in __registeredCommands:
@@ -87,6 +92,8 @@ def registerCommand(func: CommandFunction) -> CommandFunction:
     __registeredCommands[__getName(func)] = func
     __trackNumberOfArguments(func)
     __updateDocsForFunc(func)
+    if __getName(func) not in __requiredAccessOfCommands:
+        __requiredAccessOfCommands[__getName(func)] = "everyone"
 
     return func
 
