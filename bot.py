@@ -48,7 +48,7 @@ class MyBot(myTypes.botWithGuild):
         challengeModule.Challenge.setDb(db)
         playerModule.Player.setDb(db)
         playerModule.Player.setBot(self)
-        self.messenger: messengerModule.Messenger = await messengerModule.Messenger.create(messageChannelId=challengesChannelId, bot=self)
+        self.messenger: messengerModule.Messenger = await messengerModule.Messenger.create(spamChannelId=spamChannelId, messageChannelId=challengesChannelId, bot=self)
         import commandEvaluator
         self.commandEvaluator = commandEvaluator.CommandEvaluator(self.messenger, self)
 
@@ -120,6 +120,12 @@ class MyBot(myTypes.botWithGuild):
 
 bot = MyBot(intents=intents)
 
+async def parseCommandForAndSendSomething(ctx: discord.ApplicationContext, command:str, rawAuthor: discord.User, reply: myTypes.replyFunction) -> None:
+    #await ctx.defer()
+    if await bot.commandEvaluator.parseCommand(command, rawAuthor=rawAuthor, reply=reply):
+        await ctx.respond("OK", ephemeral=True)
+
+
 """
 SLASH COMMANDS
 """
@@ -141,34 +147,33 @@ async def create_challenge(ctx: discord.ApplicationContext, bet, map, tribe, tim
 
 @bot.command(description="Register yourself into our super cool tournament!")
 async def register(ctx: discord.ApplicationContext):
-    await bot.commandEvaluator.parseCommand("register", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
+    await parseCommandForAndSendSomething(ctx, "register", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
     
 
 @bot.command(description="Checkout someone's current number of chips!")
 @discord.option("user", discord.User, description = "The player who you want to check out! (default is you)", required = False, default = None)
 async def userinfo(ctx: discord.ApplicationContext, user: discord.User):
-    await bot.commandEvaluator.parseCommand(f"userinfo {user.id if user else ''}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
+    await parseCommandForAndSendSomething(ctx, f"userinfo {user.id if user else ''}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
     
 
 @bot.command(description="Give someone chips so they can keep messing around!")
 @discord.option("user", discord.User, description = "The player who you want to check out! (default is you)", required = True)
 @discord.option("amount", int, description = "How many chips to give.", required = True)
 async def add_chips(ctx: discord.ApplicationContext, user: discord.User, amount: int):
-    await bot.commandEvaluator.parseCommand(f"userinfo {user.id} {amount}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
+    await parseCommandForAndSendSomething(ctx, f"userinfo {user.id} {amount}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
 
 @bot.command(description="List the top 10 players")
 async def leaderboards(ctx: discord.ApplicationContext):
-    await bot.commandEvaluator.parseCommand(f"leaderboards", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
-    await ctx.respond("Success!", ephemeral=True)
+    await parseCommandForAndSendSomething(ctx, f"leaderboards", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
 
 @bot.command(description="Checkout how to use this bot!")
 async def help(ctx: discord.ApplicationContext):
-    await bot.commandEvaluator.parseCommand("help", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
+    await parseCommandForAndSendSomething(ctx, "help", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
     
 @bot.command(description="Checkout game's details!")
 @discord.option("gameid", int, description = "Id of the game you're interested in.", required = True)
 async def gameinfo(ctx: discord.ApplicationContext, gameid: int):
-    await bot.commandEvaluator.parseCommand(f"gameinfo {gameid}", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
+    await parseCommandForAndSendSomething(ctx, f"gameinfo {gameid}", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
 
 @bot.command(description="List all games")
 @discord.option("open", bool)
@@ -177,13 +182,7 @@ async def gameinfo(ctx: discord.ApplicationContext, gameid: int):
 @discord.option("aborted", bool)
 @discord.option("with_player", discord.User, default = None, required = False)
 async def list_games(ctx: discord.ApplicationContext, open: bool, in_progress: bool, finished: bool, aborted: bool, with_player: discord.User):
-    await ctx.respond("Success!", ephemeral=True)
-    if with_player != None:
-        withPlayerId = playerModule.Player.getById(with_player.id)
-    else:
-        withPlayerId = None
-    
-    await bot.commandEvaluator.parseCommand(f"list {'open ' if open else ''}{'done ' if finished else ''}{'playing ' if in_progress else ''}{f'with {with_player}' if with_player else ''}", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
+    await parseCommandForAndSendSomething(ctx, f"list {'open ' if open else ''}{'done ' if finished else ''}{'playing ' if in_progress else ''}{f'with {with_player}' if with_player else ''}", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
 
 
 

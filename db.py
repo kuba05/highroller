@@ -101,7 +101,7 @@ class Database:
 
     def getNewIdForChallenge(self) -> int:
         while True:
-            newId = int.from_bytes(os.urandom(7))
+            newId = int.from_bytes(os.urandom(4))
 
             # id is not yet used
             if self.getChallengeById(newId) == None:

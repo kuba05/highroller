@@ -15,8 +15,8 @@ ABORT_EMOJI = "❌"
 HELPMESSAGE = f"""TODO"""
 
 STARTING_CHIPS=10
-SIZES = ["small", "normal", "large", "huge"]
-SURFACES = ["drylands", "lakes", "continents"]
+SIZES = ["small", "normal"]
+SURFACES = ["drylands", "lakes", "continents", "pangea", "archipelago"]
 TRIBE_OPTIONS = ["Xin-xi", "Imperius", "Bardur", "Oumaji", "Kickoo", "Hoodrick", "Luxidoor", "Vengir", "Zebasi", "Ai-Mo", "Quetzali", "Yădakk", "Aquarion", "∑∫ỹriȱŋ", "Polaris", "Cymanti"]
 
 MAP_OPTIONS = [size + " " + surface for size in SIZES for surface in SURFACES]

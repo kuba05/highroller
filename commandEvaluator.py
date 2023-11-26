@@ -109,7 +109,7 @@ list of all commands:
         register yourself to our amazing tournament!
         """
         Player.create(author.id)
-        await reply("You have succesfully registered!")
+        await self.messenger.playerRegistered(author.id)
 
     @autocompleteDocs
     @registerCommand
@@ -205,7 +205,6 @@ list of all commands:
         challenge: Challenge = self.load_challenge(args[0])
         challenge.abort(byPlayer = author.id, force=False)
         await self.messenger.abortChallenge(challenge)
-        await reply("OK")
 
     @autocompleteDocs
     @setArgumentNames("challenge")
@@ -219,7 +218,6 @@ list of all commands:
         challenge: Challenge = self.load_challenge(args[0])
         challenge.accept(playerId = author.id)
         await self.messenger.acceptChallenge(challenge)
-        await reply("OK")
 
     @autocompleteDocs
     @setArgumentNames("challenge")
@@ -247,7 +245,6 @@ list of all commands:
         challenge: Challenge = self.load_challenge(args[0])
         challenge.claimVictory(winnerId = author.id, force=False)
         await self.messenger.claimChallenge(challenge)
-        await reply("OK")
 
     @autocompleteDocs
     @setArgumentNames(player = "you")
@@ -339,7 +336,6 @@ State: {challenge.state.name}
 
         challenge.abort(byPlayer = author.id, force=True)
         await self.messenger.abortChallenge(challenge)
-        await reply("OK")
 
     @autocompleteDocs
     @registerCommand
@@ -363,7 +359,6 @@ State: {challenge.state.name}
 
         challenge.claimVictory(winnerId = player.id, force=True)
         await self.messenger.claimChallenge(challenge)
-        await reply("OK")
 
     @autocompleteDocs
     @registerCommand
@@ -383,7 +378,6 @@ State: {challenge.state.name}
 
         amount = int(args[1])
         player.adjustChips(amount)
-        await reply("OK")
 
 
 

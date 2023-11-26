@@ -19,15 +19,17 @@ class Messenger:
     Should be created with create factory method.
     """
     messageChannel: discord.TextChannel
+    spamChannel: discord.TextChannel
     messages: set[int]
 
     @staticmethod
-    async def create(messageChannelId: int, bot: discord.Bot) -> Messenger:
+    async def create(messageChannelId: int, spamChannelId: int, bot: discord.Bot) -> Messenger:
         """
         Creates Messenger object and links messageChannel to it.
         """
         messenger = Messenger()
 
+        messenger.spamChannel: discord.TextChannel = await bot.fetch_channel(spamChannelId) # type: ignore
         messenger.messageChannel: discord.TextChannel = await bot.fetch_channel(messageChannelId) # type: ignore
 
         messenger.messages =  set()
@@ -37,6 +39,7 @@ class Messenger:
     async def _DM (self, player: playerModule.Player|None, message: str):
         if player != None:
             await cast(playerModule.Player, player).DM(message=message)
+
 
     async def _sendAll(self, challenge: challengeModule.Challenge, message: str) -> None:
         """
@@ -68,6 +71,11 @@ class Messenger:
             if challange.messageId != None:
                 self.messages.add(cast(int,challange.messageId))
             logging.info("Loaded a challenge after restart!")
+
+
+    """
+    STORY METHODS
+    """
 
     async def createChallengeEntry(self, challenge: challengeModule.Challenge, private: bool) -> None:
         """
@@ -138,3 +146,4 @@ challange timeouts in <t:{challenge.timeout}:t>
 
     async def playerRegistered(self, playerId: int) -> None:
         await self._DM(playerModule.Player.getById(playerId), "You have registered to Highroller tournament! Good luck have fun :D")
+        await self.spamChannel.send(f"<@{playerId}> you have registered! Please check your DMs, you should have one from me :D")
