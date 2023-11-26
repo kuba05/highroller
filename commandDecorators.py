@@ -42,7 +42,7 @@ def ensureNumberOfArgumentsIsExactly(number: int):
         @functools.wraps(func)
         def wrapper(self: Any, args: list[str], author: discord.Member, reply: replyFunction):
             if len(args) != number:
-                raise ValueError("You need to register using \"register\" command!")
+                raise ValueError(f"Wrong number of arguments! It should be exactly {number}.")
             return func(self, args, author, reply)
         
         return wrapper
@@ -57,7 +57,7 @@ def ensureNumberOfArgumentsIsAtLeast(number: int):
         @functools.wraps(func)
         def wrapper(self: Any, args: list[str], author: discord.Member, reply: replyFunction):
             if len(args) >= number:
-                raise ValueError("You need to register using \"register\" command!")
+                raise ValueError(f"Wrong number of arguments! It should at least {number}.")
             return func(self, args, author, reply)
         
         return wrapper
@@ -72,7 +72,7 @@ def ensureNumberOfArgumentsIsAtMost(number: int):
         @functools.wraps(func)
         def wrapper(self: Any, args: list[str], author: discord.Member, reply: replyFunction):
             if len(args) <= number:
-                raise ValueError("You need to register using \"register\" command!")
+                raise ValueError(f"Wrong number of arguments! It should at most {number}.")
             return func(self, args, author, reply)
         
         return wrapper
