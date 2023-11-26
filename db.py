@@ -156,10 +156,10 @@ class Database:
         ]
 
     def getTopPlayersThisEpoch(self, limit=10) -> list[list[Any]]:
-        return self.con.execute('SELECT * FROM players ORDER BY currentChips LIMIT ?', (limit, )).fetchall()
+        return self.con.execute('SELECT * FROM players ORDER BY currentChips DESC LIMIT ?', (limit, )).fetchall()
 
     def getTopPlayersTotal(self, limit=10) -> list[list[Any]]:
-        return self.con.execute('SELECT * FROM players ORDER BY totalChips LIMIT ?', (limit, )).fetchall()
+        return self.con.execute('SELECT * FROM players ORDER BY totalChips DESC LIMIT ?', (limit, )).fetchall()
 
 
 

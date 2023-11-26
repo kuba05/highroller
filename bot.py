@@ -111,8 +111,7 @@ class MyBot(discord.Bot):
         for challenge in challengeModule.Challenge.getNewTimeouts():
             try:
                 logging.info(f"challange {challenge.id} aborted due to timeout")
-                challenge.abort(None)
-                await self.messenger.abortChallengeDueTimeout(challenge)
+                await self.commandEvaluator.parseCommand(f"forceabort {challenge.id}", bot.user, source="timeout")
             except ValueError as e:
                 logging.warning("error aborting challange due to timeout")
                 logging.warning(e)
@@ -146,49 +145,20 @@ async def register(ctx: discord.ApplicationContext):
 
 @bot.command(description="Checkout someone's current number of chips!")
 @discord.option("user", discord.User, description = "The player who you want to check out! (default is you)", required = False, default = None)
-async def chips(ctx: discord.ApplicationContext, user: discord.User):
-    try:
-        if user != None:
-            player = playerModule.Player.getById(user.id)
-        else:
-            player = playerModule.Player.getById(ctx.author.id)
+async def userinfo(ctx: discord.ApplicationContext, user: discord.User):
+    await bot.commandEvaluator.parseCommand(f"userinfo {user.id if user else ''}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
+    
 
-        if player != None:
-            await ctx.respond("Success!", ephemeral=True)
-            player = cast(playerModule.Player, player)
-            winrate = player.getGameScore()
-            await ctx.channel.send(f"{await player.getName()} has {player.currentChips} chips! ({player.totalChips} across all periods)\nWinrate is: {winrate[0]}/{winrate[1]}")
-        else:
-            await ctx.respond(f"Player isn't registered!", ephemeral=True)
-    except ValueError as e:
-        await ctx.respond(str(e), ephemeral=True)
-
-@bot.command(description="Give yourself 10 chips so you can keep messing around!")
-async def add_chips(ctx: discord.ApplicationContext):
-    try:
-        player = playerModule.Player.getById(ctx.author.id)
-        if player != None:
-            player = cast(playerModule.Player, player)
-            player.adjustChips(10)
-            await ctx.respond(f"Success!", ephemeral=True)
-        else:
-            await ctx.respond(f"Please register!", ephemeral=True)
-    except ValueError as e:
-        await ctx.respond(str(e))
+@bot.command(description="Give someone chips so they can keep messing around!")
+@discord.option("user", discord.User, description = "The player who you want to check out! (default is you)", required = True)
+@discord.option("amount", int, description = "How many chips to give.", required = True)
+async def add_chips(ctx: discord.ApplicationContext, user: discord.User, amount: int):
+    await bot.commandEvaluator.parseCommand(f"userinfo {user.id} {amount}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
 
 @bot.command(description="List the top 10 players")
 async def leaderboards(ctx: discord.ApplicationContext):
+    await bot.commandEvaluator.parseCommand(f"leaderboards", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
     await ctx.respond("Success!", ephemeral=True)
-    await ctx.channel.send(f"The top 10 players so far this run are:")
-    player: playerModule.Player
-    for i, player in enumerate(playerModule.Player.getTopPlayersThisSeason(10)):
-        winrate = player.getGameScore()
-        await ctx.channel.send(f"{i+1}. {await player.getName()} with {player.currentChips} chips")
-        
-    await ctx.channel.send(f"The top 10 players all times are:")
-    for i, player in enumerate(playerModule.Player.getTopPlayersAllTime(10)):
-        winrate = player.getGameScore()
-        await ctx.channel.send(f"{i+1}. {await player.getName()} {player.totalChips}")
 
 @bot.command(description="Checkout how to use this bot!")
 async def help(ctx: discord.ApplicationContext):
@@ -210,11 +180,12 @@ async def list_games(ctx: discord.ApplicationContext, open: bool, in_progress: b
     
     await bot.commandEvaluator.parseCommand(f"list {'open ' if open else ''}{'done ' if finished else ''}{'playing ' if in_progress else ''}{f'with {with_player}' if with_player else ''}", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
 
+
+
 @bot.command()
 async def shutdown(ctx: discord.ApplicationContext):
     if await bot.is_owner(ctx.user):
         await ctx.respond("Exiting")
-        print("exiting")
         sys.exit()
     await ctx.respond("No Permissions")
 

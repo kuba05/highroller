@@ -31,6 +31,7 @@ class CommandEvaluator:
 
         try:
             args = message.strip().split(" ")
+            args = list(filter(lambda arg: arg!= "", map(lambda arg: arg.strip(), args)))
             await self.evaluateCommand(args=args, author=author, reply=reply)
             return True
         except ValueError as e:
@@ -78,11 +79,24 @@ class CommandEvaluator:
                 await self.command_win(args[1:], author, reply)
 
             case "forceabort":
-                await self.command_force_abort(args[1:], author, reply)
+                await self.command_forceabort(args[1:], author, reply)
             
             case "forcewin":
-                await self.command_force_win(args[1:], author, reply)
+                await self.command_forcewin(args[1:], author, reply)
+            
+            case "addchips":
+                await self.command_addchips(args[1:], author, reply)
                 
+            case "userinfo":
+                await self.command_userinfo(args[1:], author, reply)
+
+            case "ganeinfo":
+                raise NotImplemented
+                await self.command_gameinfo(args[1:], author, reply)
+                
+            case "leaderboards":
+                await self.command_leaderboards(args[1:], author, reply)
+
             case _:
                 raise ValueError("unknown command. Try \"help\" command.")
 
@@ -161,7 +175,6 @@ class CommandEvaluator:
             allChallenges = [challenge for challenge in allChallenges if challenge.authorId == playerId or challenge.acceptedBy == playerId]
 
         await reply("\n\n".join([await challenge.toTextForMessages() for challenge in allChallenges]))
-        return None
 
     @ensureRegistered
     async def command_create(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
@@ -175,6 +188,7 @@ class CommandEvaluator:
         challenge: Challenge = self.load_challenge(args[0])
         challenge.abort(byPlayer = author.id, force=False)
         await self.messenger.abortChallenge(challenge)
+        await reply("OK")
 
     @ensureRegistered
     async def command_accept(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
@@ -188,6 +202,7 @@ class CommandEvaluator:
         challenge: Challenge = self.load_challenge(args[0])
         challenge.accept(playerId = author.id)
         await self.messenger.acceptChallenge(challenge)
+        await reply("OK")
 
     @ensureRegistered
     async def command_start(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
@@ -197,6 +212,7 @@ class CommandEvaluator:
         challenge: Challenge = self.load_challenge(args[0])
         challenge.start(playerId = author.id, gameName=" ".join(args[1:]))
         await self.messenger.startChallenge(challenge)
+        await reply("OK")
 
     @ensureRegistered
     async def command_win(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
@@ -206,9 +222,44 @@ class CommandEvaluator:
         challenge: Challenge = self.load_challenge(args[0])
         challenge.claimVictory(winnerId = author.id, force=False)
         await self.messenger.claimChallenge(challenge)
+        await reply("OK")
 
+    @ensureRegistered
+    async def command_userinfo(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        if len(args) > 1:
+            raise ValueError("invalid number of arguments!")
+        
+        if len(args) == 1:
+            player = Player.getById(self.parseId(args[0]))
+        else:
+            player = Player.getById(author.id)
+
+        if player == None:
+            raise ValueError("Selected user doesn't exist!")
+        
+        player = cast(Player, player)
+
+        winrate = player.getGameScore()
+        message = f"{await player.getName()} has {player.currentChips} chips! ({player.totalChips} across all periods)\nWinrate is: {winrate[0]}/{winrate[1]}"
+        
+        await reply(message)
+
+    @ensureRegistered
+    async def command_leaderboards(self, args: list[str], author: discord.Member, reply: replyFunction):
+        message = f"""\
+The top 10 players so far this run are:
+""" + "\n".join([f'{i+1}. {await player.getName()} with {player.currentChips} chips' for i, player in enumerate(Player.getTopPlayersThisSeason(10))]) + """
+
+The top 10 players all times are:
+""" + "\n".join([f'{i+1}. {await player.getName()} with {player.currentChips} chips' for i, player in enumerate(Player.getTopPlayersAllTime(10))])
+        
+        await reply(message)
+
+    """
+    ADMIN COMMANDS
+    """
     @ensureAdmin
-    async def command_force_abort(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+    async def command_forceabort(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         if len(args) != 1:
             raise ValueError("invalid number of arguments!")
         
@@ -220,13 +271,14 @@ class CommandEvaluator:
 
         challenge.abort(byPlayer = author.id, force=True)
         await self.messenger.abortChallenge(challenge)
+        await reply("OK")
 
     @ensureAdmin
-    async def command_force_win(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+    async def command_forcewin(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         if len(args) != 2:
             raise ValueError("invalid number of arguments!")
 
-        if Player.getById(int(args[1])) == None:
+        if Player.getById(self.parseId(args[1])) == None:
             raise ValueError("Given player isn't registered!")
         
         challenge: Challenge = self.load_challenge(args[0])
@@ -235,8 +287,28 @@ class CommandEvaluator:
         if challenge.winner != None:
             challenge.unwin()
 
-        challenge.claimVictory(winnerId = int(args[2]), force=True)
+        challenge.claimVictory(winnerId = int(args[1]), force=True)
         await self.messenger.claimChallenge(challenge)
+        await reply("OK")
+
+    @ensureAdmin
+    async def command_addchips(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        if len(args) != 2:
+            raise ValueError("invalid number of arguments!")
+        
+        player = Player.getById(self.parseId(args[0]))
+
+        if player == None:
+            raise ValueError("Given player isn't registered!")
+        
+        player = cast(Player, player)
+
+        amount = int(args[1])
+        player.adjustChips(amount)
+        await reply("OK")
+
+
+        
 
     def load_challenge(self, challengeId: str) -> Challenge:
         """
