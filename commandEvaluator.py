@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import Optional, cast, Callable, Any, Awaitable, Protocol
 import logging
-import functools
 
 import discord
 import logging
@@ -9,17 +8,29 @@ import logging
 from messenger import Messenger
 from challenge import Challenge
 from player import Player
-from commandDecorators import ensureAdmin, ensureRegistered, replyFunction, ensureNumberOfArgumentsIsAtLeast, ensureNumberOfArgumentsIsAtMost, ensureNumberOfArgumentsIsExactly
-from constants import HELPMESSAGE, ChallengeState
-import myTypes
+from commandDecorators import ensureAdmin, ensureRegistered, replyFunction, ensureNumberOfArgumentsIsAtLeast, ensureNumberOfArgumentsIsAtMost, ensureNumberOfArgumentsIsExactly, registerCommand, autocompleteDocs, getAllRegisteredCommands, getHelpOfAllCommands, setArgumentNames
+from constants import ChallengeState, HELPMESSAGE
+from myTypes import replyFunction, botWithGuild
 
 async def emptyReply(message: str):
     pass
 
 class CommandEvaluator:
-    def __init__(self, messenger: Messenger, bot: myTypes.botWithGuild):
+    def __init__(self, messenger: Messenger, bot: botWithGuild):
         self.messenger = messenger
         self.bot = bot
+        
+        # max length of message is 2000 chars, so we will have to do a lot of hacking to keep lines intact :D
+
+        self.helpMessage = []
+        helpMessage = HELPMESSAGE + "\n\n" + getHelpOfAllCommands()
+        
+        while len(helpMessage) > 2000:
+            lines = helpMessage[:2000].count("\n")
+            a = helpMessage.split("\n", lines)
+            self.helpMessage.append("\n".join(a[:-1]))
+            helpMessage = a[-1]
+        self.helpMessage.append(helpMessage)
 
     async def parseCommand(self, message: str, rawAuthor: discord.User | discord.Member | None, reply: replyFunction = emptyReply, source = None) -> bool:
         """
@@ -63,74 +74,60 @@ class CommandEvaluator:
             raise ValueError("invalid number of arguments!")
 
         # match commands
-        match args[0]:
-            case "register":
-                await self.command_register([], author, reply)
+        if args[0] not in getAllRegisteredCommands():
+            raise ValueError("unknown command. Try \"help\" command.")
+        
+        await (getAllRegisteredCommands()[args[0]](self, args[1:], author, reply))
 
-            case "help":
-                await self.command_help([], author, reply)
-
-            case "list":
-                await self.command_list(args[1:], author, reply)
-            
-            case "create":
-                await self.command_create(args[1:], author, reply)
-
-            case "abort":
-                await self.command_abort(args[1:], author, reply)
-
-            case "accept":
-                await self.command_accept(args[1:], author, reply)
-
-            case "start":
-                await self.command_start(args[1:], author, reply)
-
-            case "win":
-                await self.command_win(args[1:], author, reply)
-
-            case "forceabort":
-                await self.command_forceabort(args[1:], author, reply)
-            
-            case "forcewin":
-                await self.command_forcewin(args[1:], author, reply)
-            
-            case "addchips":
-                await self.command_addchips(args[1:], author, reply)
-                
-            case "userinfo":
-                await self.command_userinfo(args[1:], author, reply)
-
-            case "ganeinfo":
-                raise NotImplemented
-                await self.command_gameinfo(args[1:], author, reply)
-                
-            case "leaderboards":
-                await self.command_leaderboards(args[1:], author, reply)
-
-            case _:
-                raise ValueError("unknown command. Try \"help\" command.")
-
+    @autocompleteDocs
+    @registerCommand
     @ensureNumberOfArgumentsIsExactly(0)
     async def command_help(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        await reply(HELPMESSAGE)
+        """
+        display help message
+        """
+        await reply(HELPMESSAGE + f"""
+                    
+list of all commands:
+{", ".join(getAllRegisteredCommands().keys())}""")
 
+    @autocompleteDocs
+    @registerCommand
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_detailedhelp(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        display help message including description of all commands
+        """
+        for message in self.helpMessage:
+            await reply(message)
+
+    @autocompleteDocs
+    @registerCommand
     @ensureNumberOfArgumentsIsExactly(0)
     async def command_register(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        register yourself to our amazing tournament!
+        """
         Player.create(author.id)
         await reply("You have succesfully registered!")
 
+    @autocompleteDocs
+    @registerCommand
     @ensureRegistered
     @ensureNumberOfArgumentsIsAtLeast(1)
     async def command_list(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         """
-            list takes at least one argument which specifies which games to list
+        lists all games which satisfy arguments.
 
-            argument options:
-                "all", "done", "open", "playing", "mine", "aborted"
+        argument options:
+            "all", "done", "open", "playing", "mine", "aborted", "from"
+
+        "from" should be followed by ID or name of a player, whos games you want to see
         """
         for arg in args[1:]:
             if arg not in ["all", "done", "open", "playing", "mine", "aborted"]:
                 raise ValueError(f"invalid argument \"{arg}\"")
+            
         done = open = inProgress = aborted = False
         withPlayers: list[int] = []
 
@@ -162,7 +159,10 @@ class CommandEvaluator:
                     i += 1
                     if i >= len(args):
                         raise ValueError("After argument 'with' there should be a player ID")
-                    withPlayers.append(self.parseId(args[i]))
+                    player = self.parsePlayer(args[i])
+                    if player == None:
+                        raise ValueError(f"Player {args[i]} doesn't exist!")
+                    withPlayers.append(cast(Player, player).id)
             
             i += 1
 
@@ -186,59 +186,80 @@ class CommandEvaluator:
 
         await reply("\n\n".join([await challenge.toTextForMessages() for challenge in allChallenges]))
 
+    @autocompleteDocs
+    @setArgumentNames("challenge")
+    @registerCommand
     @ensureRegistered
     async def command_create(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         await reply("Please use the /create_command instead :)")
 
+    @autocompleteDocs
+    @registerCommand
+    @setArgumentNames("challenge")
     @ensureRegistered
     @ensureNumberOfArgumentsIsExactly(1)
     async def command_abort(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        abort challenge with given ID
+        """
         challenge: Challenge = self.load_challenge(args[0])
         challenge.abort(byPlayer = author.id, force=False)
         await self.messenger.abortChallenge(challenge)
         await reply("OK")
 
+    @autocompleteDocs
+    @setArgumentNames("challenge")
+    @registerCommand
     @ensureRegistered
     @ensureNumberOfArgumentsIsExactly(1)
     async def command_accept(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         """
-        takes 1 argument:
-            id of game to accept
+        accepts challenge with given ID
         """
         challenge: Challenge = self.load_challenge(args[0])
         challenge.accept(playerId = author.id)
         await self.messenger.acceptChallenge(challenge)
         await reply("OK")
 
+    @autocompleteDocs
+    @setArgumentNames("challenge")
+    @registerCommand
     @ensureRegistered
     @ensureNumberOfArgumentsIsAtLeast(2)
     async def command_start(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        starts challenge with given ID
+        """
         challenge: Challenge = self.load_challenge(args[0])
         challenge.start(playerId = author.id, gameName=" ".join(args[1:]))
         await self.messenger.startChallenge(challenge)
         await reply("OK")
 
+    @autocompleteDocs
+    @setArgumentNames("challenge")
+    @registerCommand
     @ensureRegistered
     @ensureNumberOfArgumentsIsExactly(1)
     async def command_win(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        claims you have won challenge with given ID
+        """
         challenge: Challenge = self.load_challenge(args[0])
         challenge.claimVictory(winnerId = author.id, force=False)
         await self.messenger.claimChallenge(challenge)
         await reply("OK")
 
+    @autocompleteDocs
+    @setArgumentNames(player = "you")
+    @registerCommand
     @ensureRegistered
     @ensureNumberOfArgumentsIsAtMost(1)
     async def command_userinfo(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        gives detailed information about player
+        """
         if len(args) == 1:
-            # it's number
-            if args[0].isdecimal():
-                player = Player.getById(self.parseId(args[0]))
-            
-            # it's player name
-            else:
-                member = self.bot.guild.get_member_named(args[0])
-                print(member)
-                player = Player.getById(cast(discord.Member, member).id) if member != None else None
+            player = self.parsePlayer(args[0])
         else:
             player = Player.getById(author.id)
 
@@ -252,9 +273,14 @@ class CommandEvaluator:
         
         await reply(message)
 
+    @autocompleteDocs
+    @registerCommand
     @ensureRegistered
     @ensureNumberOfArgumentsIsExactly(0)
     async def command_leaderboards(self, args: list[str], author: discord.Member, reply: replyFunction):
+        """
+        returns list of top 10 players this season and all time
+        """
         message = f"""\
 The top 10 players so far this run are:
 """ + "\n".join([f'{i+1}. {await player.getName()} with {player.currentChips} chips' for i, player in enumerate(Player.getTopPlayersThisSeason(10))]) + """
@@ -264,11 +290,14 @@ The top 10 players all times are:
         
         await reply(message)
 
+    @autocompleteDocs
+    @registerCommand
+    @setArgumentNames("challenge")
     @ensureRegistered
     @ensureNumberOfArgumentsIsExactly(1)
     async def command_gameinfo(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         """
-        TODO
+        return detailed information about challenge
         """
         challenge = self.load_challenge(args[0])
         message = f"""### Challenge {challenge.id}
@@ -293,11 +322,15 @@ State: {challenge.state.name}
     """
     ADMIN COMMANDS
     """
+    @autocompleteDocs
+    @registerCommand
+    @setArgumentNames("challenge")
     @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(1)
     async def command_forceabort(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        if len(args) != 1:
-            raise ValueError("invalid number of arguments!")
-        
+        """
+        force abort challenge. This takes away winning from the winner
+        """
         challenge: Challenge = self.load_challenge(args[0])
         # if someone has already won before, we need to take away his win
 
@@ -308,30 +341,40 @@ State: {challenge.state.name}
         await self.messenger.abortChallenge(challenge)
         await reply("OK")
 
+    @autocompleteDocs
+    @registerCommand
+    @setArgumentNames("challenge", "winner")
     @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(2)
     async def command_forcewin(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        if len(args) != 2:
-            raise ValueError("invalid number of arguments!")
-
-        if Player.getById(self.parseId(args[1])) == None:
+        """
+        force set winner of a challenge
+        """
+        player = self.parsePlayer(args[1])
+        if player == None:
             raise ValueError("Given player isn't registered!")
-        
+        player = cast(Player, player)
+
         challenge: Challenge = self.load_challenge(args[0])
         
         # if someone has already won before, we need to take away his win
         if challenge.winner != None:
             challenge.unwin()
 
-        challenge.claimVictory(winnerId = int(args[1]), force=True)
+        challenge.claimVictory(winnerId = player.id, force=True)
         await self.messenger.claimChallenge(challenge)
         await reply("OK")
 
+    @autocompleteDocs
+    @registerCommand
+    @setArgumentNames("player", "chips")
     @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(2)
     async def command_addchips(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        if len(args) != 2:
-            raise ValueError("invalid number of arguments!")
-        
-        player = Player.getById(self.parseId(args[0]))
+        """
+        give a player some amount of chips (or take it away if chips is negative)
+        """
+        player = self.parsePlayer(args[0])
 
         if player == None:
             raise ValueError("Given player isn't registered!")
@@ -343,7 +386,6 @@ State: {challenge.state.name}
         await reply("OK")
 
 
-        
 
     def load_challenge(self, challengeId: str) -> Challenge:
         """
@@ -368,3 +410,22 @@ State: {challenge.state.name}
             return int(id)
         except ValueError:
             raise ValueError(f"ID '{id}' should be a number!")
+        
+    def parsePlayer(self, idOrName: str) -> Optional[Player]:
+        """
+        returns user from discord.
+
+        idOrName can either represend ID of the user, or their name in bot's guild
+        """
+        
+        # it's number
+        if idOrName.isdecimal():
+            player = Player.getById(self.parseId(idOrName))
+        
+        # it's player name
+        else:
+            member = self.bot.guild.get_member_named(idOrName)
+            print(member)
+            player = Player.getById(cast(discord.Member, member).id) if member != None else None
+
+        return player
