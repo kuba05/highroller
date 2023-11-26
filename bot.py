@@ -160,7 +160,7 @@ async def userinfo(ctx: discord.ApplicationContext, user: discord.User):
 @discord.option("user", discord.User, description = "The player who you want to check out! (default is you)", required = True)
 @discord.option("amount", int, description = "How many chips to give.", required = True)
 async def add_chips(ctx: discord.ApplicationContext, user: discord.User, amount: int):
-    await parseCommandForAndSendSomething(ctx, f"userinfo {user.id} {amount}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
+    await parseCommandForAndSendSomething(ctx, f"addchips {user.id} {amount}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
 
 @bot.command(description="List the top 10 players")
 async def leaderboards(ctx: discord.ApplicationContext):

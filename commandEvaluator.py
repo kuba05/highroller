@@ -120,9 +120,7 @@ list of all commands:
         lists all games which satisfy arguments.
 
         argument options:
-            "all", "done", "open", "playing", "mine", "aborted", "from"
-
-        "from" should be followed by ID or name of a player, whos games you want to see
+            "all", "done", "open", "playing", "mine", "aborted", "from [player]"
         """
         for arg in args[1:]:
             if arg not in ["all", "done", "open", "playing", "mine", "aborted"]:
