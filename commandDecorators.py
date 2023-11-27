@@ -39,7 +39,7 @@ def getHelpOfAllCommands() -> str:
     """
     messages = {}
     for value in set(__requiredAccessOfCommands.values()):
-        messages[value] = "\n".join([cast(str, command.__doc__) for name, command in __registeredCommands.items() if __requiredAccessOfCommands[name] == value])
+        messages[value] = "\n".join([cast(str, command.__doc__) for name, command in __registeredCommands.items() if __requiredAccessOfCommands[name] == value and name in __rawDocsOfCommands])
 
     return "\n\n".join([f"## Commands for {value}\n{messages[value]}" for value in messages])
         

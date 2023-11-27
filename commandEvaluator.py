@@ -389,6 +389,15 @@ State: {challenge.state.name}
 
         Player.giveAllPlayersChips(chips)
 
+    @registerCommand
+    @setArgumentNames()
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_dumplogs(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        dumps all command logs
+        """
+        await author.send(file=discord.File(self.logFile.name))
 
     def load_challenge(self, challengeId: str) -> Challenge:
         """

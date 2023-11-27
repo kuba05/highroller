@@ -122,7 +122,7 @@ bot = MyBot(intents=intents)
 
 async def parseCommandForAndSendSomething(ctx: discord.ApplicationContext, command:str, rawAuthor: discord.User, reply: myTypes.replyFunction) -> None:
     #await ctx.defer()
-    if await bot.commandEvaluator.parseCommand(command, rawAuthor=rawAuthor, reply=reply):
+    if await bot.commandEvaluator.parseCommand(command, rawAuthor=rawAuthor, reply=reply, source="slash command"):
         await ctx.respond("OK", ephemeral=True)
 
 
@@ -186,8 +186,12 @@ async def list_games(ctx: discord.ApplicationContext, open: bool, in_progress: b
 
 @bot.command(description="gives everyone 3 chips")
 async def give_midround_chips(ctx: discord.ApplicationContext):
-    await parseCommandForAndSendSomething(ctx, f"giveeveryonemidroundchips 3", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
-    
+    await parseCommandForAndSendSomething(ctx, f"giveeveryonemidroundchips 3", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
+ 
+@bot.command(description="dump logs into your DMs")
+async def dump_logs(ctx: discord.ApplicationContext):
+    await parseCommandForAndSendSomething(ctx, f"dumplogs", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
+       
 
 @bot.command()
 async def shutdown(ctx: discord.ApplicationContext):
