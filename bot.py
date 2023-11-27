@@ -137,13 +137,7 @@ SLASH COMMANDS
 @discord.option("timeout", int, required = False, min_value = 1, default = 60*12, description="Number of minutes before this challange will automatically abort. (default is 12*60)")
 @discord.option("private", bool, required = False, default = False)
 async def create_challenge(ctx: discord.ApplicationContext, bet, map, tribe, timeout, private):
-    # you can use them as they were actual integers
-    try:
-        challenge = challengeModule.Challenge.precreate(bet = int(bet), authorId=ctx.author.id, map=map, tribe=tribe, lastsForMinutes=timeout)
-        await bot.messenger.createChallengeEntry(challenge=challenge, private=private)
-        await ctx.respond("Success!", ephemeral=True)
-    except ValueError as e:
-        await ctx.respond(str(e), ephemeral=True)
+    await parseCommandForAndSendSomething(ctx, f"create {bet} \"{map}\" \"{tribe}\" {timeout} {private}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
 
 @bot.command(description="Register yourself into our super cool tournament!")
 async def register(ctx: discord.ApplicationContext):

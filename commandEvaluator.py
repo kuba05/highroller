@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional, cast, Callable, Any, Awaitable, Protocol
-import logging
+import re
 
 import discord
 import logging
@@ -9,7 +9,7 @@ from messenger import Messenger
 from challenge import Challenge
 from player import Player
 from commandDecorators import ensureAdmin, ensureRegistered, replyFunction, ensureNumberOfArgumentsIsAtLeast, ensureNumberOfArgumentsIsAtMost, ensureNumberOfArgumentsIsExactly, registerCommand, autocompleteDocs, getAllRegisteredCommands, getHelpOfAllCommands, setArgumentNames
-from constants import ChallengeState, HELPMESSAGE
+from constants import ChallengeState, HELPMESSAGE, TRIBE_OPTIONS, MAP_OPTIONS
 from myTypes import replyFunction, botWithGuild
 
 async def emptyReply(message: str):
@@ -20,17 +20,22 @@ class CommandEvaluator:
         self.messenger = messenger
         self.bot = bot
         self.logFile = open("commandlog.log", "w")
+        
         # max length of message is 2000 chars, so we will have to do a lot of hacking to keep lines intact :D
-
         self.helpMessage = []
         helpMessage = HELPMESSAGE + "\n\n" + getHelpOfAllCommands()
-        
+
         while len(helpMessage) > 2000:
             lines = helpMessage[:2000].count("\n")
             a = helpMessage.split("\n", lines)
             self.helpMessage.append("\n".join(a[:-1]))
             helpMessage = a[-1]
         self.helpMessage.append(helpMessage)
+
+        # when frozen is True, no new (nonforce) command are allowed - this will happen when there are technical difficulties and at the end of each split
+        self.frozen = False
+        self.__spliiter = re.compile("(\w+)|\"(.+?)\"|(\[.+?\])")
+
 
     async def parseCommand(self, message: str, rawAuthor: discord.User | discord.Member | None, reply: replyFunction = emptyReply, source = None) -> bool:
         """
@@ -48,8 +53,8 @@ class CommandEvaluator:
                 author =  await self.bot.guild.fetch_member(rawAuthor.id)
 
         try:
-            args = message.strip().split(" ")
-            args = list(filter(lambda arg: arg!= "", map(lambda arg: arg.strip(), args)))
+            args = self.__spliiter.findall(message.strip())
+            args = list(filter(lambda arg: arg!= "", map(lambda arg: "".join(arg).strip(), args)))
             await self.evaluateCommand(args=args, author=author, reply=reply, source=source)
             return True
         except ValueError as e:
@@ -59,6 +64,9 @@ class CommandEvaluator:
             return False
 
     async def evaluateCommand(self, args: list[str], author: discord.Member | None, reply: replyFunction = emptyReply, source = None) -> None:
+        """
+        runs a command with given args (first arg is command name)
+        """
 
         if author == None:
             raise ValueError("You are not a member of our guild!")
@@ -113,7 +121,6 @@ list of all commands:
 
     @autocompleteDocs
     @registerCommand
-    @ensureRegistered
     @ensureNumberOfArgumentsIsAtLeast(1)
     async def command_list(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         """
@@ -184,13 +191,42 @@ list of all commands:
 
         await reply("\n\n".join([await challenge.toTextForMessages() for challenge in allChallenges]))
 
-    @autocompleteDocs
-    @setArgumentNames("challenge")
-    @registerCommand
-    @ensureRegistered
-    async def command_create(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        await reply("Please use the /create_command instead :)")
 
+
+
+    @autocompleteDocs
+    @registerCommand
+    @setArgumentNames("bet", "map", "tribe", timeout = "60*12", private = "False")
+    @ensureRegistered
+    @ensureNumberOfArgumentsIsAtLeast(3)
+    @ensureNumberOfArgumentsIsAtMost(5)
+    async def command_create(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        bet = int(args[0])
+        map = args[1]
+        tribe = args[2]
+
+        if map not in MAP_OPTIONS:
+            raise ValueError("Not a legal map type. I am sorry :( ")
+        
+        if tribe not in TRIBE_OPTIONS:
+            raise ValueError("Not a legal tribe. I am sorry :( ")
+        
+        if len(args) > 3:
+            timeout = int(args[3])
+        else:
+            timeout = 60 * 12
+        
+        if len(args) > 4:
+            if args[4].lower() not in ["true", "false"]:
+                raise ValueError("Not a legal value for private. Should be True or False")
+
+            private = (args[3].lower() == "true")
+
+        
+        challenge = Challenge.precreate(bet = int(bet), authorId=author.id, map=map, tribe=tribe, lastsForMinutes=timeout)
+        await self.messenger.createChallengeEntry(challenge=challenge, private=private)
+
+    
     @autocompleteDocs
     @registerCommand
     @setArgumentNames("challenge")
@@ -399,6 +435,30 @@ State: {challenge.state.name}
         """
         await author.send(file=discord.File(self.logFile.name))
 
+
+    @registerCommand
+    @setArgumentNames()
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_freeze(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        freezes "registered user" commands
+        """
+        self.frozen = True
+
+    @registerCommand
+    @setArgumentNames()
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_unfreeze(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        unfreezes "registered user" commands
+        """
+        self.frozen = False
+
+    """
+    HELPERS
+    """
     def load_challenge(self, challengeId: str) -> Challenge:
         """
         loads challenge by id string. If not found, throws ValueError

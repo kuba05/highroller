@@ -125,10 +125,13 @@ def setArgumentNames(*args: str, **kwargs: str):
 def ensureRegistered(func: CommandFunction) -> CommandFunction:
     """
     ensures "author" is registered
+    also checks if frozen is True and if it is fails
     """
 
     @functools.wraps(func)
     def wrapper(self: Any, args: list[str], author: discord.Member, reply: replyFunction):
+        if self.frozen == True:
+            raise ValueError("The tournament is frozen!")
         if Player.getById(author.id) == None:
             raise ValueError("You need to register using \"register\" command!")
         return func(self, args, author, reply)
@@ -142,6 +145,7 @@ def ensureRegistered(func: CommandFunction) -> CommandFunction:
 def ensureAdmin(func: CommandFunction) -> CommandFunction:
     """
     ensures "author" is admin
+    DOESN'T check frozen
     """
     @functools.wraps(func)
     def wrapper(self: Any, args: list[str], author: discord.Member, reply: replyFunction):
