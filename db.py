@@ -149,6 +149,15 @@ class Database:
             logging.error(str(e))
             self.con.rollback()
 
+    def giveAllPlayersChips(self, changeOfChips: int) -> None:
+        try:
+            self.con.execute('UPDATE players SET currentChips = currentChips + ?, totalChips = totalChips + ?', (changeOfChips, changeOfChips,))
+            self.con.commit()
+        except Exception as e:
+            logging.error(f"Error adjusting all players' chips counters")
+            logging.error(str(e))
+            self.con.rollback()
+
     def getPlayersWinrate(self, playerId: int) -> list[int]:
         return [
             cast(int, self.con.execute('SELECT COUNT(messageId) FROM challenges WHERE winner = ? AND NOT (state = 7 OR state = 1)', (playerId,)).fetchone()[0]),

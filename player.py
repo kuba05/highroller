@@ -73,6 +73,9 @@ class Player:
         raise EnvironmentError(f"Bot of {cls} not set!")
 
 
+    @classmethod
+    def giveAllPlayersChips(cls: Type[Self], amount: int) -> None:
+        cls.getDb().giveAllPlayersChips(amount)
 
 
     """

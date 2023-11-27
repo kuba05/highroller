@@ -19,7 +19,7 @@ class CommandEvaluator:
     def __init__(self, messenger: Messenger, bot: botWithGuild):
         self.messenger = messenger
         self.bot = bot
-        
+        self.logFile = open("commandlog.log", "w")
         # max length of message is 2000 chars, so we will have to do a lot of hacking to keep lines intact :D
 
         self.helpMessage = []
@@ -50,7 +50,7 @@ class CommandEvaluator:
         try:
             args = message.strip().split(" ")
             args = list(filter(lambda arg: arg!= "", map(lambda arg: arg.strip(), args)))
-            await self.evaluateCommand(args=args, author=author, reply=reply)
+            await self.evaluateCommand(args=args, author=author, reply=reply, source=source)
             return True
         except ValueError as e:
             logging.warning(f"Error parsing command {f'from {source}' if source != None else ''}")
@@ -58,13 +58,13 @@ class CommandEvaluator:
             await reply(str(e))
             return False
 
-    async def evaluateCommand(self, args: list[str], author: discord.Member | None, reply: replyFunction = emptyReply) -> None:
-
-        print("evaluating command")
-        print(args)
+    async def evaluateCommand(self, args: list[str], author: discord.Member | None, reply: replyFunction = emptyReply, source = None) -> None:
 
         if author == None:
             raise ValueError("You are not a member of our guild!")
+
+        print(f"evaluating command from source: {source}; author: {cast(discord.Member, author).name}; args: {args}", file=self.logFile, flush=True)
+
         author = cast(discord.Member, author)
 
 
@@ -377,6 +377,17 @@ State: {challenge.state.name}
         amount = int(args[1])
         player.adjustChips(amount)
 
+    @registerCommand
+    @setArgumentNames("chips")
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(1)
+    async def command_giveeveryonemidroundchips(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        give all players some amount of chips (or take it away if chips is negative)
+        """
+        chips = int(args[0])
+
+        Player.giveAllPlayersChips(chips)
 
 
     def load_challenge(self, challengeId: str) -> Challenge:

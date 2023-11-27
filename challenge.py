@@ -260,7 +260,7 @@ class Challenge:
         if winnerId not in [self.authorId, self.acceptedBy]:
             raise ValueError("You can't finish a game you're not part of!")
         
-        if force or self.state != ChallengeState.STARTED:
+        if (not force) and self.state != ChallengeState.STARTED:
             raise ValueError("The game can't be finished!")
         
         self.getDb().setChallengeState(self.id, ChallengeState.FINISHED)
@@ -285,10 +285,10 @@ class Challenge:
         Raises:
             ValueError - if Challenge's state isn't correct or byPlayer isn't part of the game
         """
-        if force or byPlayer not in [self.authorId, self.acceptedBy, None]:
+        if ((not force) and byPlayer not in [self.authorId, self.acceptedBy, None]):
             raise ValueError("You can't abort a game you're not part of!")
         
-        if force or self.state not in [ChallengeState.CREATED, ChallengeState.ACCEPTED]:
+        if ((not force) and self.state not in [ChallengeState.CREATED, ChallengeState.ACCEPTED]):
             raise ValueError("Can't abort game that has already been started!")
         
         self.getDb().setChallengeState(self.id, ChallengeState.ABORTED)

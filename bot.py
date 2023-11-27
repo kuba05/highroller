@@ -184,7 +184,10 @@ async def gameinfo(ctx: discord.ApplicationContext, gameid: int):
 async def list_games(ctx: discord.ApplicationContext, open: bool, in_progress: bool, finished: bool, aborted: bool, with_player: discord.User):
     await parseCommandForAndSendSomething(ctx, f"list {'open ' if open else ''}{'done ' if finished else ''}{'playing ' if in_progress else ''}{f'with {with_player}' if with_player else ''}", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
 
-
+@bot.command(description="gives everyone 3 chips")
+async def give_midround_chips(ctx: discord.ApplicationContext):
+    await parseCommandForAndSendSomething(ctx, f"giveeveryonemidroundchips 3", rawAuthor=ctx.author, reply=lambda a: ctx.channel.send(a))
+    
 
 @bot.command()
 async def shutdown(ctx: discord.ApplicationContext):
