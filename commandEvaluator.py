@@ -220,7 +220,7 @@ list of all commands:
             if args[4].lower() not in ["true", "false"]:
                 raise ValueError("Not a legal value for private. Should be True or False")
 
-            private = (args[3].lower() == "true")
+            private = (args[4].lower() == "true")
 
         
         challenge = Challenge.precreate(bet = int(bet), authorId=author.id, map=map, tribe=tribe, lastsForMinutes=timeout)
@@ -455,6 +455,16 @@ State: {challenge.state.name}
         unfreezes "registered user" commands
         """
         self.frozen = False
+
+    @registerCommand
+    @setArgumentNames()
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_resetchips(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        reset all current season chips
+        """
+        Player.resetAllPlayersCurrentChips()
 
     """
     HELPERS

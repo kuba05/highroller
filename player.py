@@ -77,7 +77,10 @@ class Player:
     def giveAllPlayersChips(cls: Type[Self], amount: int) -> None:
         cls.getDb().giveAllPlayersChips(amount)
 
-
+    @classmethod
+    def resetAllPlayersCurrentChips(cls: Type[Self]) -> None:
+        cls.getDb().setAllCurrentChips(STARTING_CHIPS)
+        
     """
     FACTORY METHODS
     """

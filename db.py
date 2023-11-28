@@ -170,6 +170,14 @@ class Database:
     def getTopPlayersTotal(self, limit=10) -> list[list[Any]]:
         return self.con.execute('SELECT * FROM players ORDER BY totalChips DESC LIMIT ?', (limit, )).fetchall()
 
+    def setAllCurrentChips(self, value=10) -> None:
+        try:
+            self.con.execute('UPDATE players SET currentChips = ?', (value,))
+            self.con.commit()
+        except Exception as e:
+            logging.error(f"Error asetting all currentChips")
+            logging.error(str(e))
+            self.con.rollback()
 
 
 
