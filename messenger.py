@@ -92,7 +92,7 @@ f"""
 bet: {challenge.bet}
 map: {challenge.map}
 tribe: {challenge.tribe}
-timelimit: Live game
+timelimit: 24 hours
 
 challange timeouts in <t:{challenge.timeout}:t>
 """

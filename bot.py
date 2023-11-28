@@ -135,7 +135,7 @@ SLASH COMMANDS
 @discord.option("map", str, choices = MAP_OPTIONS)
 @discord.option("tribe", str, choices = TRIBE_OPTIONS)
 @discord.option("timeout", int, required = False, min_value = 1, default = 60*12, description="Number of minutes before this challange will automatically abort. (default is 12*60)")
-@discord.option("private", bool, required = False, default = False)
+@discord.option("private", bool, required = False, default = False, description="if true, this challenge won't be listed. You can still use its ID to join it.")
 async def create_challenge(ctx: discord.ApplicationContext, bet, map, tribe, timeout, private):
     await parseCommandForAndSendSomething(ctx, f"create {bet} \"{map}\" \"{tribe}\" {timeout} {private}", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
 
@@ -186,7 +186,6 @@ async def give_midround_chips(ctx: discord.ApplicationContext):
 async def dump_logs(ctx: discord.ApplicationContext):
     await parseCommandForAndSendSomething(ctx, f"dumplogs", rawAuthor=ctx.author, reply=lambda a: ctx.respond(a, ephemeral=True))
        
-
 @bot.command()
 async def shutdown(ctx: discord.ApplicationContext):
     if await bot.is_owner(ctx.user):
