@@ -41,8 +41,7 @@ userinfo, gameinfo and abort
 
 if an argument has more than one word, you will need to put it inside quotation marks (")
 example:
-
-create 1 "small drylands" "Bardur"
+```create 1 "small drylands" "Bardur"```
 
 When a command asks for "challenge" argument, provide the challenge's ID.
 

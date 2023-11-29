@@ -219,8 +219,8 @@ list of all commands:
     @ensureNumberOfArgumentsIsAtLeast(3)
     @ensureNumberOfArgumentsIsAtMost(5)
     async def command_create(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        f"""
-        Creates a challenge. The challenge will be automatically aborted after [timeout] minutes. If the challenge is [private], it won't be listed in <#{CHALLENGES_LIST_CHANNEL}>.
+        """
+        Creates a challenge. The challenge will be automatically abortded after [timeout] minutes. If the challenge is [private], it won't be listed in <#1170686597746917406>.
         """
         bet = int(args[0])
         map = args[1].lower()
