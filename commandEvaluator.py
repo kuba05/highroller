@@ -9,7 +9,7 @@ from messenger import Messenger
 from challenge import Challenge
 from player import Player
 from commandDecorators import ensureAdmin, ensureRegistered, replyFunction, ensureNumberOfArgumentsIsAtLeast, ensureNumberOfArgumentsIsAtMost, ensureNumberOfArgumentsIsExactly, registerCommand, autocompleteDocs, getAllRegisteredCommands, getHelpOfAllCommands, setArgumentNames, disableIfFrozen
-from constants import ChallengeState, HELPMESSAGE, TRIBE_OPTIONS, MAP_OPTIONS, TEAM_ROLES
+from constants import ChallengeState, HELPMESSAGE, TRIBE_OPTIONS, MAP_OPTIONS, TEAM_ROLES, CHALLENGES_LIST_CHANNEL
 from myTypes import replyFunction, botWithGuild
 
 async def emptyReply(message: str):
@@ -197,20 +197,40 @@ list of all commands:
     @disableIfFrozen
     @autocompleteDocs
     @registerCommand
+    @setArgumentNames("challenge", "message")
+    @ensureRegistered
+    @ensureNumberOfArgumentsIsExactly(2)
+    async def command_send(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        sends all player in a game a message
+        """
+        challenge: Challenge = self.load_challenge(args[0])
+        if author.id in [challenge.authorId, challenge.acceptedBy]:
+            await self.messenger._sendAll(challenge, f"message from {author.display_name}:\n{args[1]}")
+        else:
+            raise ValueError("You are not part of the game!")
+
+
+    @disableIfFrozen
+    @autocompleteDocs
+    @registerCommand
     @setArgumentNames("bet", "map", "tribe", timeout = "60*12", private = "False")
     @ensureRegistered
     @ensureNumberOfArgumentsIsAtLeast(3)
     @ensureNumberOfArgumentsIsAtMost(5)
     async def command_create(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        f"""
+        Creates a challenge. The challenge will be automatically aborted after [timeout] minutes. If the challenge is [private], it won't be listed in <#{CHALLENGES_LIST_CHANNEL}>.
+        """
         bet = int(args[0])
-        map = args[1]
-        tribe = args[2]
+        map = args[1].lower()
+        tribe = args[2].lower()
 
         if map not in MAP_OPTIONS:
-            raise ValueError("Not a legal map type. I am sorry :( ")
+            raise ValueError(f"Not a legal map type. I am sorry :( legal options are:\n{' '.join(MAP_OPTIONS)}")
         
         if tribe not in TRIBE_OPTIONS:
-            raise ValueError("Not a legal tribe. I am sorry :( ")
+            raise ValueError(f"Not a legal tribe. I am sorry :(  legal options are:\n{' '.join(TRIBE_OPTIONS)}")
         
         if len(args) > 3:
             timeout = int(args[3])
@@ -236,7 +256,7 @@ list of all commands:
     @ensureNumberOfArgumentsIsExactly(1)
     async def command_abort(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         """
-        abort challenge with given ID
+        abort challenge with given ID. Both players will be refunded their bet and the game will be canceled. Can only be used if the game hasn't been started yet. Abuse will be persecuted!
         """
         challenge: Challenge = self.load_challenge(args[0])
         challenge.abort(byPlayer = author.id, force=False)
@@ -422,7 +442,7 @@ State: {challenge.state.name}
     @registerCommand
     @ensureAdmin
     @ensureNumberOfArgumentsIsExactly(0)
-    async def command_rank_teams(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+    async def command_rankteams(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         """
         create leaderboards by teams
         """
