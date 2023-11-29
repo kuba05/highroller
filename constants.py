@@ -9,10 +9,26 @@ class ChallengeState(Enum):
     ABORTED = 7
 
 
+GUILD_ID = 447883341463814144
+
+LIST_OF_ADMINS = [524276664746639363, 429740472416731147, 1110479654306992188]
+TEAM_ROLES = [572070039113695234, 943876858188005447, 630243505629036554]
+
+SPAM_CHANNEL = 1170686597746917406
+CHALLENGES_LIST_CHANNEL = 1170686597746917406
+RULES_CHANNEL = 1178445726062235649
 
 ACCEPT_EMOJI = "⚔"
 ABORT_EMOJI = "❌"
-HELPMESSAGE = f"""TODO"""
+HELPMESSAGE = f"""
+See <#{RULES_CHANNEL}> for complete rules.
+
+All commands can be used by sending me the command via DM. Most of them also have a coresponding slash command.
+
+To join our tournament, you will need to use the "register" command.
+
+Then, to create a challenge, use the "create" command. Once someone accepts it (using the "accept" command or by reacting to it in <#{CHALLENGES_LIST_CHANNEL}>), you will get to.
+"""
 
 STARTING_CHIPS=10
 SIZES = ["small", "normal"]
@@ -20,10 +36,3 @@ SURFACES = ["drylands", "lakes", "continents", "pangea", "archipelago"]
 TRIBE_OPTIONS = ["Xin-xi", "Imperius", "Bardur", "Oumaji", "Kickoo", "Hoodrick", "Luxidoor", "Vengir", "Zebasi", "Ai-Mo", "Quetzali", "Yădakk", "Aquarion", "∑∫ỹriȱŋ", "Polaris", "Cymanti"]
 
 MAP_OPTIONS = [size + " " + surface for size in SIZES for surface in SURFACES]
-
-LIST_OF_ADMINS = [524276664746639363, 429740472416731147, 1110479654306992188]
-GUILD_ID = 447883341463814144
-CHALLENGES_LIST_CHANNEL = 1170686597746917406
-SPAM_CHANNEL = 1170686597746917406
-
-TEAM_ROLES = [572070039113695234, 943876858188005447, 630243505629036554]
