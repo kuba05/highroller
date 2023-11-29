@@ -8,7 +8,7 @@ import logging
 from messenger import Messenger
 from challenge import Challenge
 from player import Player
-from commandDecorators import ensureAdmin, ensureRegistered, replyFunction, ensureNumberOfArgumentsIsAtLeast, ensureNumberOfArgumentsIsAtMost, ensureNumberOfArgumentsIsExactly, registerCommand, autocompleteDocs, getAllRegisteredCommands, getHelpOfAllCommands, setArgumentNames
+from commandDecorators import ensureAdmin, ensureRegistered, replyFunction, ensureNumberOfArgumentsIsAtLeast, ensureNumberOfArgumentsIsAtMost, ensureNumberOfArgumentsIsExactly, registerCommand, autocompleteDocs, getAllRegisteredCommands, getHelpOfAllCommands, setArgumentNames, disableIfFrozen
 from constants import ChallengeState, HELPMESSAGE, TRIBE_OPTIONS, MAP_OPTIONS, TEAM_ROLES
 from myTypes import replyFunction, botWithGuild
 
@@ -194,6 +194,7 @@ list of all commands:
 
 
 
+    @disableIfFrozen
     @autocompleteDocs
     @registerCommand
     @setArgumentNames("bet", "map", "tribe", timeout = "60*12", private = "False")
@@ -227,6 +228,7 @@ list of all commands:
         await self.messenger.createChallengeEntry(challenge=challenge, private=private)
 
     
+    @disableIfFrozen
     @autocompleteDocs
     @registerCommand
     @setArgumentNames("challenge")
@@ -240,6 +242,7 @@ list of all commands:
         challenge.abort(byPlayer = author.id, force=False)
         await self.messenger.abortChallenge(challenge)
 
+    @disableIfFrozen
     @autocompleteDocs
     @setArgumentNames("challenge")
     @registerCommand
@@ -253,6 +256,7 @@ list of all commands:
         challenge.accept(playerId = author.id)
         await self.messenger.acceptChallenge(challenge)
 
+    @disableIfFrozen
     @autocompleteDocs
     @setArgumentNames("challenge")
     @registerCommand
@@ -267,6 +271,7 @@ list of all commands:
         await self.messenger.startChallenge(challenge)
         await reply("OK")
 
+    @disableIfFrozen
     @autocompleteDocs
     @setArgumentNames("challenge")
     @registerCommand
@@ -320,7 +325,7 @@ The top 10 players all times are:
 """ + "\n".join([f'{i+1}. {await player.getName()} with {player.currentChips} chips' for i, player in enumerate(Player.getTopPlayersAllTime(10))])
         
         await reply(message)
-
+    
     @autocompleteDocs
     @registerCommand
     @setArgumentNames("challenge")
@@ -412,7 +417,6 @@ State: {challenge.state.name}
 
         amount = int(args[1])
         player.adjustChips(amount)
-
 
     @autocompleteDocs
     @registerCommand
