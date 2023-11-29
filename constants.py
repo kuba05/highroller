@@ -34,7 +34,9 @@ Once the challenge finishes, you can claim victory by using the "win" command.
 If, at any point, you experience difficulties or technical problems, please let the staff now :D
 
 Other useful commands include:
-userinfo, gameinfo and abort
+abort - cancels a game that has not yet been started
+help - displays this help message
+detailedhelp - displays the uses of all commands
 
 ## a syntax for each command is as follows
 [command_name] [argument1] [argument2] ...
