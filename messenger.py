@@ -106,7 +106,7 @@ challange timeouts in <t:{challenge.timeout}:t>
             await self._sendHost(challenge, f"{await challenge.toTextForMessages()} has been created.\n"\
                 "The challange is private, so it won't show up in listings."\
                 "If you want someone to connect, they have to DM me the following command:\n"\
-                "accept {challenge.id}")
+                f"accept {challenge.id}")
             challenge.finishCreating(None)
     
     async def abortChallenge(self, challenge: challengeModule.Challenge) -> None:
@@ -137,11 +137,11 @@ challange timeouts in <t:{challenge.timeout}:t>
     async def startChallenge(self, challenge: challengeModule.Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been started! \nThe game name is {challenge.gameName}\n\nGLHF!"\
             f"Once the game is over, the winner should send me the following command:\nwin {challenge.id} ")
-        logging.info("started {challenge.id}")
+        logging.info(f"started {challenge.id}")
 
     async def claimChallenge(self, challenge: challengeModule.Challenge) -> None:
         await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been claimed by {await cast(playerModule.Player, playerModule.Player.getById(challenge.winner)).getName()}! \nIf you want to dispute the claim, contact the mods!")
-        logging.info("claimed {challenge.id}")
+        logging.info(f"claimed {challenge.id}")
 
 
     async def playerRegistered(self, playerId: int) -> None:

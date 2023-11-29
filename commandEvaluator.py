@@ -9,7 +9,7 @@ from messenger import Messenger
 from challenge import Challenge
 from player import Player
 from commandDecorators import ensureAdmin, ensureRegistered, replyFunction, ensureNumberOfArgumentsIsAtLeast, ensureNumberOfArgumentsIsAtMost, ensureNumberOfArgumentsIsExactly, registerCommand, autocompleteDocs, getAllRegisteredCommands, getHelpOfAllCommands, setArgumentNames
-from constants import ChallengeState, HELPMESSAGE, TRIBE_OPTIONS, MAP_OPTIONS
+from constants import ChallengeState, HELPMESSAGE, TRIBE_OPTIONS, MAP_OPTIONS, TEAM_ROLES
 from myTypes import replyFunction, botWithGuild
 
 async def emptyReply(message: str):
@@ -413,6 +413,62 @@ State: {challenge.state.name}
         amount = int(args[1])
         player.adjustChips(amount)
 
+
+    @autocompleteDocs
+    @registerCommand
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_rank_teams(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        create leaderboards by teams
+        """
+        points = {role: 0 for role in TEAM_ROLES}
+
+        roleList: list[discord.Guild] = [cast(discord.Guild, i) for i in [self.bot.guild.get_role(roleId) for roleId in TEAM_ROLES] if i != None]
+        for player in Player.getAll():
+            member = self.bot.guild.get_member(player.id)
+            if member == None:
+                logging.error(f"Can't find member {player.id}")
+                continue
+            for role in roleList:
+                if role in cast(discord.Member,member).roles:
+                    points[role.id] += player.totalChips
+
+        roleList.sort(key=lambda role: points[role.id], reverse=True)
+
+        message = f"Top teams all time are:\n" + "\n".join([f'{i+1}. {team.name} --- {points[team.id]}' for i, team in enumerate(roleList)])
+        await reply(message)
+
+    """
+    TECHNICAL COMMANDS
+    """
+    @registerCommand
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_freeze(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        freezes "registered user" commands
+        """
+        self.frozen = True
+
+    @registerCommand
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_unfreeze(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        unfreezes "registered user" commands
+        """
+        self.frozen = False
+
+    @registerCommand
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_resetchips(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        reset all current season chips
+        """
+        Player.resetAllPlayersCurrentChips()
+
     @registerCommand
     @setArgumentNames("chips")
     @ensureAdmin
@@ -426,7 +482,6 @@ State: {challenge.state.name}
         Player.giveAllPlayersChips(chips)
 
     @registerCommand
-    @setArgumentNames()
     @ensureAdmin
     @ensureNumberOfArgumentsIsExactly(0)
     async def command_dumplogs(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
@@ -434,37 +489,6 @@ State: {challenge.state.name}
         dumps all command logs
         """
         await author.send(file=discord.File(self.logFile.name))
-
-
-    @registerCommand
-    @setArgumentNames()
-    @ensureAdmin
-    @ensureNumberOfArgumentsIsExactly(0)
-    async def command_freeze(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        """
-        freezes "registered user" commands
-        """
-        self.frozen = True
-
-    @registerCommand
-    @setArgumentNames()
-    @ensureAdmin
-    @ensureNumberOfArgumentsIsExactly(0)
-    async def command_unfreeze(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        """
-        unfreezes "registered user" commands
-        """
-        self.frozen = False
-
-    @registerCommand
-    @setArgumentNames()
-    @ensureAdmin
-    @ensureNumberOfArgumentsIsExactly(0)
-    async def command_resetchips(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
-        """
-        reset all current season chips
-        """
-        Player.resetAllPlayersCurrentChips()
 
     """
     HELPERS

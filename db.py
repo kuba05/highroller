@@ -179,6 +179,8 @@ class Database:
             logging.error(str(e))
             self.con.rollback()
 
+    def getAllPlayers(self) -> list[list[Any]]:
+        return self.con.execute('SELECT * FROM players').fetchall()
 
 
             

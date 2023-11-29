@@ -121,6 +121,16 @@ class Player:
             return cls(*playerData)
     
     @classmethod
+    def getAll(cls: Type[Self]) -> list[Self]:
+        """
+        Returns a list of all players ever registered.
+
+        Raises:
+            Nothing
+        """
+        return [cls(*playerData) for playerData in cls.getDb().getAllPlayers()]
+
+    @classmethod
     def getTopPlayersThisSeason(cls: Type[Self], count: int) -> list[Self]:
         """
         Returns a list of players with the most chips in this season in descending order. The list has length [count].

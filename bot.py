@@ -13,7 +13,7 @@ import datetime
 
 import logging
 from db import Database
-from constants import ChallengeState, HELPMESSAGE, MAP_OPTIONS, TRIBE_OPTIONS, GUILD_ID, ACCEPT_EMOJI, ABORT_EMOJI
+from constants import ChallengeState, HELPMESSAGE, MAP_OPTIONS, TRIBE_OPTIONS, GUILD_ID, ACCEPT_EMOJI, ABORT_EMOJI, CHALLENGES_LIST_CHANNEL, SPAM_CHANNEL
 
 # a bit of hacking to allow circular import
 import challenge as challengeModule
@@ -29,12 +29,7 @@ intents = discord.Intents.all()
 
 db = Database('db.db')
 
-CLIENT_ID = os.getenv('CLIENT_ID')
 TOKEN = os.getenv('TOKEN')
-
-
-challengesChannelId = int(os.getenv('CHALLENGES')) # type: ignore
-spamChannelId = int(os.getenv('SPAM')) # type: ignore
 
 
 
@@ -48,7 +43,7 @@ class MyBot(myTypes.botWithGuild):
         challengeModule.Challenge.setDb(db)
         playerModule.Player.setDb(db)
         playerModule.Player.setBot(self)
-        self.messenger: messengerModule.Messenger = await messengerModule.Messenger.create(spamChannelId=spamChannelId, messageChannelId=challengesChannelId, bot=self)
+        self.messenger: messengerModule.Messenger = await messengerModule.Messenger.create(spamChannelId=SPAM_CHANNEL, messageChannelId=CHALLENGES_LIST_CHANNEL, bot=self)
         import commandEvaluator
         self.commandEvaluator = commandEvaluator.CommandEvaluator(self.messenger, self)
 

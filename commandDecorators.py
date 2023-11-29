@@ -122,6 +122,20 @@ def setArgumentNames(*args: str, **kwargs: str):
     ENSURERS
 """
 
+def disableIfFrozen(func: CommandFunction) -> CommandFunction:
+    """
+    disables the command if tournament is frozen except for admins
+    """
+    @functools.wraps(func)
+    def wrapper(self: Any, args: list[str], author: discord.Member, reply: replyFunction):
+        if self.frozen == True and author.id not in LIST_OF_ADMINS:
+            raise ValueError("The tournament is frozen!")
+        return func(self, args, author, reply)
+    
+    __updateRegisteredCommand(wrapper)
+    __updateDocsForFunc(wrapper)
+    return wrapper
+
 def ensureRegistered(func: CommandFunction) -> CommandFunction:
     """
     ensures "author" is registered
@@ -130,8 +144,6 @@ def ensureRegistered(func: CommandFunction) -> CommandFunction:
 
     @functools.wraps(func)
     def wrapper(self: Any, args: list[str], author: discord.Member, reply: replyFunction):
-        if self.frozen == True:
-            raise ValueError("The tournament is frozen!")
         if Player.getById(author.id) == None:
             raise ValueError("You need to register using \"register\" command!")
         return func(self, args, author, reply)
