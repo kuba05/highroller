@@ -15,6 +15,11 @@ LIST_OF_ADMINS = [
     524276664746639363, # gavlna
     429740472416731147, # espark
     762773913159204894, # sundance
+    608290258978865174, # lergooj
+    1180215279922458716, # aragorn,
+    295626622785159168, # flame
+    783761262529216545, # mcgoon
+    821763861325283338, # cheese
     1110479654306992188, # bot
 ]
 TEAM_ROLES = [
@@ -68,6 +73,6 @@ When a command asks for "user" argument, provide either the user's ID or their d
 STARTING_CHIPS=10
 SIZES = ["small", "normal"]
 SURFACES = ["drylands", "lakes", "continents", "pangea", "archipelago"]
-TRIBE_OPTIONS = ["Xin-xi", "Imperius", "Bardur", "Oumaji", "Kickoo", "Hoodrick", "Luxidoor", "Vengir", "Zebasi", "Ai-Mo", "Quetzali", "Yădakk", "Aquarion", "∑∫ỹriȱŋ", "Polaris", "Cymanti"]
+TRIBE_OPTIONS = [i.lower() for i in ["Xin-xi", "Imperius", "Bardur", "Oumaji", "Kickoo", "Hoodrick", "Luxidoor", "Vengir", "Zebasi", "Ai-Mo", "Quetzali", "Yădakk", "Aquarion", "∑∫ỹriȱŋ", "Polaris", "Cymanti"]]
 
 MAP_OPTIONS = [size.lower() + " " + surface.lower() for size in SIZES for surface in SURFACES]

@@ -43,6 +43,9 @@ class CommandEvaluator:
         """
 
         author: Optional[discord.Member]
+
+        if message[0] == "/":
+            message = message[1:]
         if rawAuthor == None:
             author = None
         else:
@@ -81,11 +84,13 @@ class CommandEvaluator:
             logging.info("no args recieved")
             raise ValueError("invalid number of arguments!")
 
+        commandName = args[0].lower()
+
         # match commands
-        if args[0] not in getAllRegisteredCommands():
+        if commandName not in getAllRegisteredCommands():
             raise ValueError("unknown command. Try \"help\" command.")
         
-        await (getAllRegisteredCommands()[args[0]](self, args[1:], author, reply))
+        await (getAllRegisteredCommands()[commandName](self, args[1:], author, reply))
 
     @autocompleteDocs
     @registerCommand
@@ -129,10 +134,6 @@ list of all commands:
         argument options:
             "all", "done", "open", "playing", "mine", "aborted", "from [player]"
         """
-        for arg in args[1:]:
-            if arg not in ["all", "done", "open", "playing", "mine", "aborted"]:
-                raise ValueError(f"invalid argument \"{arg}\"")
-            
         done = open = inProgress = aborted = False
         withPlayers: list[int] = []
 
@@ -169,6 +170,9 @@ list of all commands:
                         raise ValueError(f"Player {args[i]} doesn't exist!")
                     withPlayers.append(cast(Player, player).id)
             
+                case _:
+                    raise ValueError(f"not a recognized argument {arg} on position {i+1}")
+
             i += 1
 
         allChallenges: list[Challenge] = []
@@ -189,7 +193,10 @@ list of all commands:
         for playerId in withPlayers:
             allChallenges = [challenge for challenge in allChallenges if challenge.authorId == playerId or challenge.acceptedBy == playerId]
 
-        await reply("\n\n".join([await challenge.toTextForMessages() for challenge in allChallenges]))
+        if len(allChallenges) == 0:
+            await reply("no games match your options")
+        else:
+            await reply("\n\n".join([await challenge.toTextForMessages() for challenge in allChallenges]))
 
 
 
