@@ -63,7 +63,7 @@ class MyBot(myTypes.botWithGuild):
         logging.info("recieved a DM!")
 
         # handle recieving a DM
-        await self.commandEvaluator.parseCommand(message=message.content, rawAuthor=message.author, reply=message.reply, source="DM")
+        await self.commandEvaluator.parseCommand(message=message.content+" "+" ".join([message.url for message in message.attachments]), rawAuthor=message.author, reply=message.reply, source="DM")
 
 
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
