@@ -19,7 +19,7 @@ class CommandEvaluator:
     def __init__(self, messenger: Messenger, bot: botWithGuild):
         self.messenger = messenger
         self.bot = bot
-        self.logFile = open("commandlog.log", "w")
+        self.logFile = open("commandlog.log", "a")
         
         # max length of message is 2000 chars, so we will have to do a lot of hacking to keep lines intact :D
         self.helpMessage = []
