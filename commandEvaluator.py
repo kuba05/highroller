@@ -34,7 +34,7 @@ class CommandEvaluator:
 
         # when frozen is True, no new (nonforce) command are allowed - this will happen when there are technical difficulties and at the end of each split
         self.frozen = False
-        self.__spliiter = re.compile("(\w+)|\"(.+?)\"|(\[.+?\])")
+        self.__spliiter = re.compile(r'((?:[^\s"]|(?:\"))+)|"((?:[^"]|(?:\"))+)"')
 
 
     async def parseCommand(self, message: str, rawAuthor: discord.User | discord.Member | None, reply: replyFunction = emptyReply, source = None) -> bool:
@@ -57,6 +57,7 @@ class CommandEvaluator:
 
         try:
             args = self.__spliiter.findall(message.strip())
+            print("Preparse args:", args, flush=True, file=self.logFile)
             args = list(filter(lambda arg: arg!= "", map(lambda arg: "".join(arg).strip(), args)))
             await self.evaluateCommand(args=args, author=author, reply=reply, source=source)
             return True
@@ -206,14 +207,14 @@ list of all commands:
     @registerCommand
     @setArgumentNames("challenge", "message")
     @ensureRegistered
-    @ensureNumberOfArgumentsIsExactly(2)
+    @ensureNumberOfArgumentsIsAtLeast(2)
     async def command_send(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
         """
         sends all player in a game a message
         """
         challenge: Challenge = self.load_challenge(args[0])
         if author.id in [challenge.authorId, challenge.acceptedBy]:
-            await self.messenger._sendAll(challenge, f"message from {author.display_name}:\n{args[1]}")
+            await self.messenger._sendAll(challenge, f"message from {author.display_name}:\n{' '.join(args[1:])}")
         else:
             raise ValueError("You are not part of the game!")
 
