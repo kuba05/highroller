@@ -160,8 +160,8 @@ class Database:
 
     def getPlayersWinrate(self, playerId: int) -> list[int]:
         return [
-            cast(int, self.con.execute('SELECT COUNT(messageId) FROM challenges WHERE winner = ? AND NOT (state = 7 OR state = 1)', (playerId,)).fetchone()[0]),
-            cast(int,self.con.execute('SELECT COUNT(messageId) FROM challenges WHERE (authorId = ? OR acceptedBy = ?) AND NOT (state = 7 OR state = 1)', (playerId, playerId)).fetchone()[0])
+            cast(int, self.con.execute('SELECT COUNT(id) FROM challenges WHERE winner = ? AND state = 5', (playerId,)).fetchone()[0]),
+            cast(int,self.con.execute('SELECT COUNT(id) FROM challenges WHERE (authorId = ? OR acceptedBy = ?) AND state = 5', (playerId, playerId)).fetchone()[0])
         ]
 
     def getTopPlayersThisEpoch(self, limit=10) -> list[list[Any]]:
