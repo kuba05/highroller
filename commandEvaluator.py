@@ -34,7 +34,7 @@ class CommandEvaluator:
 
         # when frozen is True, no new (nonforce) command are allowed - this will happen when there are technical difficulties and at the end of each split
         self.frozen = False
-        self.__spliiter = re.compile(r'((?:[^\s"]|(?:\"))+)|"((?:[^"]|(?:\"))+)"')
+        self.__spliiter = re.compile(r'((?:[^\s"]|(?:\\"))+)|(?:"((?:[^"]|(?:\\"))+)")')
 
 
     async def parseCommand(self, message: str, rawAuthor: discord.User | discord.Member | None, reply: replyFunction = emptyReply, source = None) -> bool:
@@ -57,7 +57,7 @@ class CommandEvaluator:
 
         try:
             args = self.__spliiter.findall(message.strip())
-            print("Preparse args:", args, flush=True, file=self.logFile)
+            print("Preparse args:", message.strip(), flush=True, file=self.logFile)
             args = list(filter(lambda arg: arg!= "", map(lambda arg: "".join(arg).strip(), args)))
             await self.evaluateCommand(args=args, author=author, reply=reply, source=source)
             return True
