@@ -463,7 +463,7 @@ State: {challenge.state.name}
         """
         create leaderboards by teams
         """
-        points = {role: 0 for role in TEAM_ROLES}
+        points = {role: {"value": 0, "players": 0} for role in TEAM_ROLES}
 
         roleList: list[discord.Guild] = [cast(discord.Guild, i) for i in [self.bot.guild.get_role(roleId) for roleId in TEAM_ROLES] if i != None]
         for player in Player.getAll():
@@ -473,11 +473,12 @@ State: {challenge.state.name}
                 continue
             for role in roleList:
                 if role in cast(discord.Member,member).roles:
-                    points[role.id] += player.totalChips
+                    points[role.id]["value"] += player.totalChips
+                    points[role.id]["players"] += 1
 
-        roleList.sort(key=lambda role: points[role.id], reverse=True)
+        roleList.sort(key=lambda role: points[role.id]["value"], reverse=True)
 
-        message = f"Top teams all time are:\n" + "\n".join([f'{i+1}. {team.name} --- {points[team.id]}' for i, team in enumerate(roleList)])
+        message = f"Top teams all time are:\n" + "\n".join([f'{i+1}. {team.name} --- {points[team.id]["value"]} [with {points[team.id]["players"]} players]' for i, team in enumerate(roleList)])
         await reply(message)
 
     """
