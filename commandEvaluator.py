@@ -66,6 +66,11 @@ class CommandEvaluator:
             logging.warning(str(e))
             await reply(str(e))
             return False
+        except Exception as e:
+            logging.error(f"unexpected error parsing command {f'from {source}' if source != None else ''}")
+            logging.error(str(e))
+            await reply(str(e))
+            return False
 
     async def evaluateCommand(self, args: list[str], author: discord.Member | None, reply: replyFunction = emptyReply, source = None) -> None:
         """
