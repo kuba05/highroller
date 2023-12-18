@@ -181,23 +181,24 @@ list of all commands:
 
             i += 1
 
-        allChallenges: list[Challenge] = []
+        logging.info(f"listing game with options: open: {open}, playing: {inProgress}, done: {done}, aborted: {aborted}, withPlayers: {withPlayers}")
+        allChallenges: set[Challenge] = set()
 
         if open:
-            allChallenges += Challenge.getAllChallengesByState(state=ChallengeState.CREATED)
+            allChallenges.update(Challenge.getAllChallengesByState(state=ChallengeState.CREATED))
 
         if inProgress:
             for state in [ChallengeState.ACCEPTED, ChallengeState.STARTED]:
-                allChallenges += Challenge.getAllChallengesByState(state=state)
+                allChallenges.update(Challenge.getAllChallengesByState(state=state))
 
         if done:
-            allChallenges += Challenge.getAllChallengesByState(state=ChallengeState.FINISHED)
+            allChallenges.update(Challenge.getAllChallengesByState(state=ChallengeState.FINISHED))
 
         if aborted:
-            allChallenges += Challenge.getAllChallengesByState(state=ChallengeState.ABORTED)
+            allChallenges.update(Challenge.getAllChallengesByState(state=ChallengeState.ABORTED))
 
         for playerId in withPlayers:
-            allChallenges = [challenge for challenge in allChallenges if challenge.authorId == playerId or challenge.acceptedBy == playerId]
+            allChallenges = {challenge for challenge in allChallenges if challenge.authorId == playerId or challenge.acceptedBy == playerId}
 
         if len(allChallenges) == 0:
             await reply("no games match your options")
@@ -337,6 +338,9 @@ list of all commands:
         
         player = cast(Player, player)
 
+        
+        logging.info(f"getting info about player {player.id}")
+
         winrate = player.getGameScore()
         message = f"{await player.getName()} has {player.currentChips} chips! ({player.totalChips} across all periods)\nWinrate is: {winrate[0]}/{winrate[1]}"
         
@@ -379,7 +383,7 @@ Tribe: {challenge.tribe}
 Timelimit: 24 hours
 
 Gamename: {challenge.gameName}
-Winner: {challenge.winner}
+Winner: {await cast(Player, Player.getById(challenge.winner)).getName() if challenge.winner != None else 'TBD'}
 
 State: {challenge.state.name}
         """
