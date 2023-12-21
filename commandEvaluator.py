@@ -532,6 +532,27 @@ State: {challenge.state.name}
         """
         await author.send(file=discord.File(self.logFile.name))
 
+    @registerCommand
+    @ensureAdmin
+    @ensureNumberOfArgumentsIsExactly(0)
+    async def command_getlistofplayerswithunfinishedgames(self, args: list[str], author: discord.Member, reply: replyFunction) -> None:
+        """
+        sends a message which pings everyone who has a game in progress
+        """
+
+        allPlayerToPing: set[int] = set()
+
+        for challenge in Challenge.getAllChallengesByState(ChallengeState.STARTED):
+            allPlayerToPing.add(challenge.authorId)
+            if challenge.acceptedBy:
+                allPlayerToPing.add(challenge.acceptedBy)
+
+
+        message = "player who have unfinished games:\n"+("\n".join([f"<@{id}>" for id in allPlayerToPing]))
+        await reply(message)
+
+        
+
     """
     HELPERS
     """
