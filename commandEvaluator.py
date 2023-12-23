@@ -359,7 +359,7 @@ The top 10 players so far this run are:
 """ + "\n".join([f'{i+1}. {await player.getName()} with {player.currentChips} chips' for i, player in enumerate(Player.getTopPlayersThisSeason(10))]) + """
 
 The top 10 players all times are:
-""" + "\n".join([f'{i+1}. {await player.getName()} with {player.currentChips} chips' for i, player in enumerate(Player.getTopPlayersAllTime(10))])
+""" + "\n".join([f'{i+1}. {await player.getName()} with {player.totalChips} chips' for i, player in enumerate(Player.getTopPlayersAllTime(10))])
         
         await reply(message)
     
