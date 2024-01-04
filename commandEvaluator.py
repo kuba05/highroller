@@ -205,12 +205,12 @@ list of all commands:
         else:
             challengesTexts = [await challenge.toTextForMessages() for challenge in allChallenges]
 
-            # max length is 4k chars per message
+            # max length is 2k chars per message
             start = 0
             length = 0
             for i in range(len(challengesTexts)):
                 length += len(challengesTexts[i])
-                if length >= 3500:
+                if length >= 1500:
                     await reply("\n\n".join(challengesTexts[start: i]))
                     start = i
 
