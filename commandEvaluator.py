@@ -213,6 +213,7 @@ list of all commands:
                 if length >= 1500:
                     await reply("\n\n".join(challengesTexts[start: i]))
                     start = i
+                    length = len(challengesTexts[i])
 
             await reply("\n\n".join(challengesTexts[start:]))
 
