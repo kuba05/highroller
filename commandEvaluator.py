@@ -203,7 +203,18 @@ list of all commands:
         if len(allChallenges) == 0:
             await reply("no games match your options")
         else:
-            await reply("\n\n".join([await challenge.toTextForMessages() for challenge in allChallenges]))
+            challengesTexts = [await challenge.toTextForMessages() for challenge in allChallenges]
+
+            # max length is 4k chars per message
+            start = 0
+            length = 0
+            for i in range(len(challengesTexts)):
+                length += len(challengesTexts[i])
+                if length >= 3500:
+                    await reply("\n\n".join(challengesTexts[start: i]))
+                    start = i
+
+            await reply("\n\n".join(challengesTexts[start:]))
 
 
 
