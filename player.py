@@ -3,7 +3,7 @@ from typing import Optional, cast, Type, Self
 
 import discord
 
-from constants import ChallengeState, STARTING_CHIPS
+from constants import ChallengeState, STARTING_CHIPS, TEAM_ROLES
 from db import Database
 import myTypes
 
@@ -180,9 +180,18 @@ class Player:
         return True
     
     async def getName(self) -> str:
-        member = await self.getBot().fetch_user(self.id)
+        member = await self.getBot().get_or_fetch_user(self.id)
         return member.name
         
+    async def getTeam(self) -> int:
+        """
+        return number coresponding to the index of team who's role this user has, returns -1 if not in a team
+        """
+        member = await self.getBot().get_or_fetch_user(self.id)
+        for i, role in TEAM_ROLES:
+            if role in [role.id for role in member.roles]:
+                return i
+        return -1
 
     def adjustChips(self, number: int) -> None:
         """
