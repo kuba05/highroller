@@ -342,7 +342,7 @@ list of all commands:
         logging.info(f"getting info about player {player.id}")
 
         winrate = player.getGameScore()
-        message = f"{await player.getName()} has {player.currentChips} chips! ({player.totalChips} across all periods)\nWinrate is: {winrate[0]}/{winrate[1]}"
+        message = f"{player.getName()} has {player.currentChips} chips! ({player.totalChips} across all periods)\nWinrate is: {winrate[0]}/{winrate[1]}"
         
         await reply(message)
 
@@ -356,10 +356,10 @@ list of all commands:
         """
         message = f"""\
 The top 10 players so far this run are:
-""" + "\n".join([f'{i+1}. {await player.getName()} with {player.currentChips} chips' for i, player in enumerate(Player.getTopPlayersThisSeason(10))]) + """
+""" + "\n".join([f'{i+1}. {player.getName()} with {player.currentChips} chips' for i, player in enumerate(Player.getTopPlayersThisSeason(10))]) + """
 
 The top 10 players all times are:
-""" + "\n".join([f'{i+1}. {await player.getName()} with {player.totalChips} chips' for i, player in enumerate(Player.getTopPlayersAllTime(10))])
+""" + "\n".join([f'{i+1}. {player.getName()} with {player.totalChips} chips' for i, player in enumerate(Player.getTopPlayersAllTime(10))])
         
         await reply(message)
     
@@ -374,8 +374,8 @@ The top 10 players all times are:
         """
         challenge = self.load_challenge(args[0])
         message = f"""### Challenge {challenge.id}
-by {await cast(Player, Player.getById(challenge.authorId)).getName()}
-accepted by {await cast(Player, Player.getById(challenge.acceptedBy)).getName() if challenge.acceptedBy != None else 'TBD'}
+by {cast(Player, Player.getById(challenge.authorId)).getName()}
+accepted by {cast(Player, Player.getById(challenge.acceptedBy)).getName() if challenge.acceptedBy != None else 'TBD'}
 
 Bet: {challenge.bet}
 Map: {challenge.map}
@@ -383,7 +383,7 @@ Tribe: {challenge.tribe}
 Timelimit: 24 hours
 
 Gamename: {challenge.gameName}
-Winner: {await cast(Player, Player.getById(challenge.winner)).getName() if challenge.winner != None else 'TBD'}
+Winner: {cast(Player, Player.getById(challenge.winner)).getName() if challenge.winner != None else 'TBD'}
 
 State: {challenge.state.name}
         """

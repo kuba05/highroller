@@ -85,7 +85,7 @@ class Messenger:
         """
         logging.info(f"Created challenge: {str(challenge)} (private: {private})")
         if not private:
-            name = await playerModule.Player.getById(challenge.authorId).getName() # type: ignore
+            name = cast(playerModule.Player, playerModule.Player.getById(challenge.authorId)).getName()
             message = await self.messageChannel.send(
 f"""
 ## ⚔️ {name} challanges you! ⚔️
@@ -140,7 +140,7 @@ challange timeouts in <t:{challenge.timeout}:t>
         logging.info(f"started {challenge.id}")
 
     async def claimChallenge(self, challenge: challengeModule.Challenge) -> None:
-        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been claimed by {await cast(playerModule.Player, playerModule.Player.getById(challenge.winner)).getName()}! \nIf you want to dispute the claim, contact the mods!")
+        await self._sendAll(challenge, f"{await challenge.toTextForMessages()} has been claimed by {cast(playerModule.Player, playerModule.Player.getById(challenge.winner)).getName()}! \nIf you want to dispute the claim, contact the mods!")
         logging.info(f"claimed {challenge.id}")
 
 

@@ -179,16 +179,22 @@ class Player:
             return False
         return True
     
-    async def getName(self) -> str:
-        member = await self.getBot().get_or_fetch_user(self.id)
+    def getName(self) -> str:
+        member = self.getBot().guild.get_member(self.id)
+        if member == None:
+            return "N/A"
+        member = cast(discord.Member, member)
         return member.name
         
-    async def getTeam(self) -> int:
+    def getTeam(self) -> int:
         """
-        return number coresponding to the index of team who's role this user has, returns -1 if not in a team
+        return number coresponding to the index of team who's role this user has, returns -1 if not in a team, -2 if user doesn't exist
         """
-        member = await self.getBot().get_or_fetch_user(self.id)
-        for i, role in TEAM_ROLES:
+        member = self.getBot().guild.get_member(self.id)
+        if member == None:
+            return -2
+        member = cast(discord.Member, member)
+        for i, role in enumerate(TEAM_ROLES):
             if role in [role.id for role in member.roles]:
                 return i
         return -1

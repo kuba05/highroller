@@ -54,8 +54,8 @@ class Challenge:
         if self.state == ChallengeState.ABORTED:
             stateMessage = " (aborted)"
         if self.winner != None:
-            stateMessage = f" (winner: {await cast(playerModule.Player, playerModule.Player.getById(self.winner)).getName()})"
-        return f"Challenge {self.id} {await cast(playerModule.Player, playerModule.Player.getById(self.authorId)).getName()} vs {await cast(playerModule.Player, playerModule.Player.getById(self.acceptedBy)).getName() if self.acceptedBy else 'TBD'}" + stateMessage
+            stateMessage = f" (winner: {cast(playerModule.Player, playerModule.Player.getById(self.winner)).getName()})"
+        return f"Challenge {self.id} {cast(playerModule.Player, playerModule.Player.getById(self.authorId)).getName()} vs {cast(playerModule.Player, playerModule.Player.getById(self.acceptedBy)).getName() if self.acceptedBy else 'TBD'}" + stateMessage
         
     def __str__(self):
         return f"Challenge {self.id} by {self.authorId}. State {self.state}. Bet {self.bet}. Timeout: {datetime.datetime.fromtimestamp(self.timeout)} Notes:\"{self.notes}\""
@@ -204,16 +204,19 @@ class Challenge:
         if self.state != ChallengeState.CREATED:
             raise ValueError("Challenge has already been accepted!")
         
-        # TODO: disabled for testing
-        #if self.authorId == playerId:
-        #    raise ValueError("You can't accept your own challenge!")
+        if self.authorId == playerId:
+            raise ValueError("You can't accept your own challenge!")
         
         player = playerModule.Player.getById(playerId)
         if player == None:
             raise ValueError("You are not registered!")
         player = cast(playerModule.Player, player)
+        
         if player.currentChips < self.bet:
             raise ValueError("You don't have enough chips")
+        
+        if player.getTeam() >= 0 and player.getTeam() == cast(playerModule.Player, playerModule.Player.getById(self.authorId)).getTeam():
+            raise ValueError("You can't play someone from the same team")
         
         self.getDb().setChallengeState(self.id, ChallengeState.ACCEPTED)
         self.state = ChallengeState.ACCEPTED
